@@ -2,25 +2,34 @@ package main
 
 import (
 	"fmt"
-	"net/smtp"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/k0kubun/pp/v3"
+	"github.com/sirupsen/logrus"
 	"github.com/twilio/twilio-go"
 )
 
-type Mail struct {
-	Sender  string
-	To      []string
-	Cc      []string
-	Bcc     []string
-	Subject string
-	Body    string
+type Config struct {
+	ConfigPath string
+	Mail       struct {
+		Sender  string
+		To      []string
+		CC      []string
+		BCC     []string
+		Subject string
+		Body    string
+		Addr    string // Mail server address with port number.
+		Auth    struct {
+			Username string // Email address to be used for auth.
+			Hostname string // Mail server address.
+			Password string
+		}
+	}
 }
 
 type Container struct {
-	ConfigPath       string
-	EmailAuth        smtp.Auth
+	Config           Config
+	Logger           *logrus.Logger
 	Session          *discordgo.Session
 	TwilioRestClient *twilio.RestClient
 }
