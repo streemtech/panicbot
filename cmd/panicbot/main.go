@@ -10,21 +10,7 @@ import (
 )
 
 type Config struct {
-	ConfigPath string
-	Mail       struct {
-		Sender  string
-		To      []string
-		CC      []string
-		BCC     []string
-		Subject string
-		Body    string
-		Addr    string // Mail server address with port number.
-		Auth    struct {
-			Username string // Email address to be used for auth.
-			Hostname string // Mail server address.
-			Password string
-		}
-	}
+	// TODO: Put config here.
 }
 
 type Container struct {
