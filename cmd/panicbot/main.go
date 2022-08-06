@@ -8,6 +8,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
 	"github.com/twilio/twilio-go"
+	"gopkg.in/yaml.v3"
 )
 
 type Boot interface {
@@ -16,11 +17,11 @@ type Boot interface {
 	watchFile(filePath string) error
 }
 type Config struct {
-	// TODO: Put config here.
+	Discord_Bot_Token string
 }
 
 type Container struct {
-	Config           Config
+	Config           *Config
 	Logger           *log.Logger
 	Session          *discordgo.Session
 	TwilioRestClient *twilio.RestClient
@@ -37,11 +38,22 @@ func main() {
 	}
 	err = c.watchFile("./config.yml")
 	if err != nil {
-		c.Logger.Fatalf("failure in watching configuration file: %s", err.Error())
+		c.Logger.Fatalf("failed to watch configuration file: %s", err.Error())
 	}
 }
 func (c *Container) configChanged() error {
-	// TODO Implement method
+	yfile, err := os.ReadFile("./config.yml")
+	if err != nil {
+		c.Logger.Fatalf("failed to read config file: %s", err.Error())
+	}
+
+	c.Config = new(Config)
+
+	err = yaml.Unmarshal(yfile, &c.Config)
+	if err != nil {
+		c.Logger.Fatalf("failed to unmarshal config data: %s", err.Error())
+	}
+
 	return nil
 }
 func (c *Container) watchFile(filePath string) error {
@@ -49,18 +61,18 @@ func (c *Container) watchFile(filePath string) error {
 	// Create a new file watcher.
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return fmt.Errorf("unable to create config filewatcher: %w", err)
+		return fmt.Errorf("failed to create config filewatcher: %w", err)
 	}
 	defer watcher.Close()
 	_, err = os.Stat(filePath)
 	if os.IsNotExist(err) {
 		file, err := os.Create(filePath)
 		if err != nil {
-			return fmt.Errorf("unable to create file at filePath (%s) for filewatcher: %w", filePath, err)
+			return fmt.Errorf("failed to create file at filePath (%s) for filewatcher: %w", filePath, err)
 		}
 		file.Close()
 	} else if err != nil {
-		return fmt.Errorf("unable to stat file at filePath (%s) for filewatcher: %w", filePath, err)
+		return fmt.Errorf("failed to stat file at filePath (%s) for filewatcher: %w", filePath, err)
 	}
 	err = watcher.Add(filePath)
 	if err != nil {
