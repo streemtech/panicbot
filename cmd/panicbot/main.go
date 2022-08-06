@@ -23,7 +23,7 @@ type Config struct {
 type Container struct {
 	Config           *Config
 	Logger           *log.Logger
-	Session          *discordgo.Session
+	Discord          *discordgo.Session
 	TwilioRestClient *twilio.RestClient
 }
 
