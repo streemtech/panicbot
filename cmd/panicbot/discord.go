@@ -28,7 +28,6 @@ func (c *Container) registerSlashCommands() error {
 		},
 	})
 	if err != nil {
-		// TODO handle me
 		return fmt.Errorf("failed to create panic ban slash command: %s", err.Error())
 	}
 	_, err = c.Discord.ApplicationCommandCreate(c.Discord.State.User.ID, c.Config.GuildID, &discordgo.ApplicationCommand{
@@ -45,7 +44,6 @@ func (c *Container) registerSlashCommands() error {
 		},
 	})
 	if err != nil {
-		// TODO handle me
 		return fmt.Errorf("failed to create panic alert slash command: %s", err.Error())
 	}
 	return nil
