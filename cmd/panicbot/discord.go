@@ -7,6 +7,7 @@ import (
 )
 
 func (c *Container) registerSlashCommands() error {
+	c.Logger.Debugf("registering slash commands")
 	var def bool = false
 	_, err := c.Discord.ApplicationCommandCreate(c.Discord.State.User.ID, c.Config.GuildID, &discordgo.ApplicationCommand{
 		Name:              "panicban",
