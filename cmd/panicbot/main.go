@@ -3,12 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/bwmarrin/discordgo"
 	log "github.com/sirupsen/logrus"
 	"github.com/twilio/twilio-go"
 	"sigs.k8s.io/yaml"
 )
+
+// TODO: Change debug logs to info.
 
 // type Boot interface {
 // 	configChanged() error
@@ -18,7 +21,6 @@ import (
 type Config struct {
 	DiscordBotToken string
 	GuildID         string
-	RoleID          string
 }
 
 type Container struct {
@@ -49,10 +51,24 @@ func main() {
 	// if err != nil {
 	// 	c.Logger.Fatalf("failed to watch configuration file: %s", err.Error())
 	// }
+	defer c.Discord.Close()
+
+	c.Logger.Debugf("create channel to listen for os interrupt")
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+	c.Logger.Infof("Press Ctrl+C to exit")
+	<-stop
+
+	c.Logger.Infof("Gracefully shutting down.")
 }
 
 func (c *Container) configChanged(load bool) error {
-	yfile, err := os.ReadFile("./config.yml")
+	configFile := os.Getenv("CONFIG")
+	if configFile == "" {
+		configFile = "./config.yml"
+		c.Logger.Infof("environment variable CONFIG was empty. Setting to default config file path location: %s", configFile)
+	}
+	yfile, err := os.ReadFile(configFile)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -136,7 +152,8 @@ func (c *Container) configureLogger() {
 	logLevel, err := log.ParseLevel(level)
 	if err != nil {
 		logLevel = log.InfoLevel
-		c.Logger.Errorf("Unable to parse log level %s:%s", level, err.Error())
+		c.Logger.Errorf("unable to parse log level %s:%s", level, err.Error())
 	}
 	c.Logger.SetLevel((logLevel))
+	c.Logger.Infof("log level set to: %s", logLevel)
 }
