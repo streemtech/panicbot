@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/sirupsen/logrus"
 )
 
 func (c *Container) registerSlashCommands() error {
@@ -58,4 +59,40 @@ func (c *Container) handleCommand(s *discordgo.Session, i *discordgo.Interaction
 			Content: "Hey there! Congratulations, you just executed your first slash command",
 		},
 	})
+}
+
+func (c *Container) findPrimaryChannelInGuild(s *discordgo.Session, guildID *string) (*discordgo.Channel, error) {
+	guild, err := s.Guild(*guildID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find primary channel")
+	}
+
+	for _, guildChannel := range guild.Channels {
+		if guildChannel.ID == guild.ID {
+			return guildChannel, nil
+		}
+	}
+	// This should never happen as every Discord server should have
+	// a primary channel
+	return nil, nil
+}
+
+func (c *Container) onBotJoinGuild(s *discordgo.Session, event *discordgo.GuildMemberAdd) {
+	c.Logger.WithFields(logrus.Fields{
+		"guildID":  event.GuildID,
+		"joinedAt": event.JoinedAt,
+		"userId":   event.User.ID,
+		"username": event.User.Username,
+	}).Info("Received guild member add event from Discord Websocket API.")
+
+	primaryChannel, err := c.findPrimaryChannelInGuild(s, &event.GuildID)
+	if err != nil {
+		c.Logger.WithFields(logrus.Fields{
+			"userID":        event.User.ID,
+			"guildID":       event.GuildID,
+			"capturedError": err,
+		}).Error("Could not determine primary channel for guild.")
+		return
+	}
+	s.ChannelMessageSend(primaryChannel.ID, "Hello! Thank you for inviting me!")
 }

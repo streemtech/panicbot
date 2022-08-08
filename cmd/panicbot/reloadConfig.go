@@ -34,6 +34,7 @@ func (c *Container) loadConfig(newConfig Config) (err error) {
 	}
 
 	c.Discord.AddHandler(c.handleCommand)
+	c.Discord.AddHandlerOnce(c.onBotJoinGuild)
 
 	c.Logger.Debugf("opening websocket connection to Discord")
 	err = c.Discord.Open()
