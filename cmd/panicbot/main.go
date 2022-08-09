@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	log "github.com/sirupsen/logrus"
@@ -19,8 +20,81 @@ import (
 // 	watchFile(filePath string) error
 // }
 type Config struct {
-	DiscordBotToken string
-	GuildID         string
+	DiscordBotToken  string
+	GuildID          string
+	PrimaryChannelID string
+	AlertingMethods  *AlertingMethods
+	Voting           *Voting
+}
+type AlertingMethods struct {
+	Twilio struct {
+		AccountSID        string
+		AuthToken         string
+		TwilioPhoneNumber string
+	}
+	Email struct {
+		Auth struct {
+			Indentity string
+			Username  string
+			Password  string
+			Host      string
+		}
+		From           string
+		DefaultMessage string
+	}
+}
+type Voting struct {
+	MaxBannablePerVote int
+	RequiredVotes      struct {
+		PanicAlert int
+		PanicBan   int
+	}
+	ContactOnVote struct {
+		Discord struct {
+			Users []string
+			Roles []string
+		}
+		Twilio struct {
+			PhoneNumbers []string
+		}
+		Email struct {
+			Addresses []string
+		}
+	}
+	AllowedToVote struct {
+		PanicAlert struct {
+			Users []string
+			Roles []string
+		}
+		PanicBan struct {
+			Users []string
+			Roles []string
+		}
+	}
+	VoteTimers struct {
+		PanicBanVoteTimer   int
+		PanicAlertVoteTimer int
+	}
+	Cooldown struct {
+		PanicAlert int
+		PanicBan   int
+	}
+	RateLimit struct {
+		PanicAlert struct {
+			TimeFrames struct {
+				Day   time.Time
+				Week  time.Time
+				Month time.Time
+			}
+		}
+		PanicBan struct {
+			TimeFrames struct {
+				Day   time.Time
+				Week  time.Time
+				Month time.Time
+			}
+		}
+	}
 }
 
 type Container struct {
