@@ -1,0 +1,69 @@
+DiscordBotToken: ""
+GuildID: ""
+# The ID of the channel that the bot will send its welcome message.
+PrimaryChannelID: ""
+AlertingMethods:
+  - Twilio:
+    AccountSID: ""
+    AuthToken: ""
+    TwilioPhoneNumber: ""
+  - Email:
+      - Auth:
+          # Indentity remains empty usually.
+          Indentity: ""
+          # Your email address from your server host provider.
+          Username: ""
+          # Password to the email account from your server host provider.
+          Password: ""
+          # URL followed by the port number to your server.
+          Host: ""
+    # The same email as username listed above.
+    From: ""
+    # The message that gets sent when a vote is triggered.
+    DefaultMessage: ""
+
+Voting:
+  - MaxBannablePerVote: 0
+  - RequiredVotes:
+    # Number of votes required before an alert is sent or a ban is triggered.
+    PanicAlert: 3
+    PanicBan: 5
+  - ContactOnVote:
+      # Who will be contacted when a vote is started.
+      - Discord:
+        Users: [""]
+        Roles: [""]
+      - Twilio:
+        PhoneNumbers: [""]
+      - Email:
+        Addresses: [""]
+  - AllowedToVote:
+      # Users that will be allowed to start panic votes.
+      - PanicAlert:
+        Users: [""]
+        Roles: [""]
+      - PanicBan:
+        Users: [""]
+        Roles: [""]
+  - VoteTimers:
+    # Configures how long votes will last in milliseconds.
+    PanicBanVoteTimer: 0
+    PanicAlertVoteTimer: 0
+  - Cooldown:
+    # Configures how many milliseconds between each use
+    PanicAlert: 0
+    PanicBan: 0
+  - RateLimit:
+      # Comment out time frames not in use using ctrl + /
+      - PanicAlert:
+          - TimeFrames:
+            # Number of uses per day/week/month
+            Day: 0
+            Week: 0
+            Month: 0
+      - PanicBan:
+          - TimeFrames:
+            # Number of uses per day/week/month
+            Day: 0
+            Week: 0
+            Month: 0
