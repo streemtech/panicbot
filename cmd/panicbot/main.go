@@ -154,6 +154,6 @@ func (c *Container) configureLogger() {
 		logLevel = log.InfoLevel
 		c.Logger.Errorf("unable to parse log level %s:%s", level, err.Error())
 	}
-	c.Logger.SetLevel((logLevel))
+	c.Logger.SetLevel(log.TraceLevel)
 	c.Logger.Infof("log level set to: %s", logLevel)
 }

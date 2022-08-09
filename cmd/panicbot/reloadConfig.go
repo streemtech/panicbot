@@ -33,20 +33,13 @@ func (c *Container) loadConfig(newConfig Config) (err error) {
 		return fmt.Errorf("failed to prepare session to Discord")
 	}
 
-	c.Discord.AddHandler(c.handleCommand)
-	c.Discord.AddHandlerOnce(c.onBotJoinGuild)
-
 	c.Logger.Debugf("opening websocket connection to Discord")
 	err = c.Discord.Open()
 	if err != nil {
 		return fmt.Errorf("failed to open websocket connection to Discord")
 	}
-
-	c.Logger.Debugf("reloading roles from config")
-	err = c.reloadRoles()
-	if err != nil {
-		return fmt.Errorf("failed to reload config roles")
-	}
+	c.Logger.Infof("successfully opened websocket connection to Discord")
+	c.onBotStartup()
 
 	return nil
 }
