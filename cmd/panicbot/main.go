@@ -27,39 +27,13 @@ type Config struct {
 	Voting           *Voting
 }
 type AlertingMethods struct {
-	Twilio struct {
-		AccountSID        string
-		AuthToken         string
-		TwilioPhoneNumber string
-	}
-	Email struct {
-		Auth struct {
-			Indentity string
-			Username  string
-			Password  string
-			Host      string
-		}
-		From           string
-		DefaultMessage string
-	}
+	Twilio *Twilio
+	Email  *Email
 }
 type Voting struct {
-	MaxBannablePerVote int
-	RequiredVotes      struct {
+	RequiredVotes struct {
 		PanicAlert int
 		PanicBan   int
-	}
-	ContactOnVote struct {
-		Discord struct {
-			Users []string
-			Roles []string
-		}
-		Twilio struct {
-			PhoneNumbers []string
-		}
-		Email struct {
-			Addresses []string
-		}
 	}
 	AllowedToVote struct {
 		PanicAlert struct {
@@ -72,31 +46,52 @@ type Voting struct {
 		}
 	}
 	VoteTimers struct {
-		PanicBanVoteTimer   int
-		PanicAlertVoteTimer int
+		PanicAlertVoteTimer time.Duration
+		PanicBanVoteTimer   time.Duration
 	}
 	Cooldown struct {
-		PanicAlert int
-		PanicBan   int
+		PanicAlert time.Duration
+		PanicBan   time.Duration
 	}
 	RateLimit struct {
 		PanicAlert struct {
-			TimeFrames struct {
-				Day   time.Time
-				Week  time.Time
-				Month time.Time
-			}
+			Day  int
+			Hour int
 		}
 		PanicBan struct {
-			TimeFrames struct {
-				Day   time.Time
-				Week  time.Time
-				Month time.Time
-			}
+			Day  int
+			Hour int
 		}
 	}
+	ContactOnVote *ContactOnVote
 }
-
+type ContactOnVote struct {
+	Discord struct {
+		Users []string
+		Roles []string
+	}
+	Twilio struct {
+		PhoneNumbers []string
+	}
+	Email struct {
+		Addresses []string
+	}
+}
+type Twilio struct {
+	AccountSID        string
+	AuthToken         string
+	TwilioPhoneNumber string
+}
+type Email struct {
+	Auth struct {
+		Identity string
+		Username string
+		Password string
+		Host     string
+	}
+	From           string
+	DefaultMessage string
+}
 type Container struct {
 	Config           Config
 	Logger           *log.Logger
