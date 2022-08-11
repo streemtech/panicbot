@@ -1,3 +1,4 @@
+# TODO Play with validation
 DiscordBotToken: ""
 GuildID: ""
 # The ID of the channel that the bot will send its welcome message.
@@ -30,20 +31,20 @@ Voting:
   ContactOnVote:
     # Who will be contacted when a vote is started.
     Discord:
-      - Users: [""]
-      - Roles: [""]
+      Users: [""]
+      Roles: [""]
     Twilio:
-      - PhoneNumbers: [""]
+      PhoneNumbers: [""]
     Email:
-      - Addresses: [""]
+      Addresses: [""]
   AllowedToVote:
     # Users that will be allowed to start panic votes.
     PanicAlert:
-      - Users: [""]
-      - Roles: [""]
+      Users: [""]
+      Roles: [""]
     PanicBan:
-      - Users: [""]
-      - Roles: [""]
+      Users: [""]
+      Roles: [""]
   VoteTimers:
     # Configures how long votes will last.
     PanicAlertVoteTimer: ""
