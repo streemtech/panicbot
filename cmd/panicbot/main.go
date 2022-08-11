@@ -49,12 +49,12 @@ type Voting struct {
 		}
 	}
 	VoteTimers struct {
-		PanicAlertVoteTimer time.Duration
-		PanicBanVoteTimer   time.Duration
+		PanicAlertVoteTimer string
+		PanicBanVoteTimer   string
 	}
 	Cooldown struct {
-		PanicAlert time.Duration
-		PanicBan   time.Duration
+		PanicAlert string
+		PanicBan   string
 	}
 }
 type ContactOnVote struct {
