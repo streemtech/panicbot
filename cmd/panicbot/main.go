@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/k0kubun/pp/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/twilio/twilio-go"
 	"sigs.k8s.io/yaml"
@@ -19,10 +21,79 @@ import (
 // 	watchFile(filePath string) error
 // }
 type Config struct {
-	DiscordBotToken string
-	GuildID         string
+	DiscordBotToken  string
+	GuildID          string
+	PrimaryChannelID string
+	AlertingMethods  AlertingMethods
+	Voting           Voting
 }
-
+type AlertingMethods struct {
+	Twilio Twilio
+	Email  Email
+}
+type Voting struct {
+	ContactOnVote ContactOnVote
+	RateLimit     RateLimit
+	RequiredVotes struct {
+		PanicAlert int
+		PanicBan   int
+	}
+	AllowedToVote struct {
+		PanicAlert struct {
+			Users []string
+			Roles []string
+		}
+		PanicBan struct {
+			Users []string
+			Roles []string
+		}
+	}
+	VoteTimers struct {
+		PanicAlertVoteTimer string
+		PanicBanVoteTimer   string
+	}
+	Cooldown struct {
+		PanicAlert string
+		PanicBan   string
+	}
+}
+type ContactOnVote struct {
+	Discord struct {
+		Users []string
+		Roles []string
+	}
+	Twilio struct {
+		PhoneNumbers []string
+	}
+	Email struct {
+		Addresses []string
+	}
+}
+type RateLimit struct {
+	PanicAlert struct {
+		Day  int
+		Hour int
+	}
+	PanicBan struct {
+		Day  int
+		Hour int
+	}
+}
+type Twilio struct {
+	AccountSID        string
+	AuthToken         string
+	TwilioPhoneNumber string
+}
+type Email struct {
+	Auth struct {
+		Identity string
+		Username string
+		Password string
+		Host     string
+	}
+	From           string
+	DefaultMessage string
+}
 type Container struct {
 	Config           Config
 	Logger           *log.Logger
@@ -60,6 +131,7 @@ func main() {
 	<-stop
 
 	c.Logger.Infof("Gracefully shutting down.")
+	pp.Println(c.Config)
 }
 
 func (c *Container) configChanged(load bool) error {
