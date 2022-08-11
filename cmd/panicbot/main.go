@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/k0kubun/pp/v3"
@@ -226,6 +225,6 @@ func (c *Container) configureLogger() {
 		logLevel = log.InfoLevel
 		c.Logger.Errorf("unable to parse log level %s:%s", level, err.Error())
 	}
-	c.Logger.SetLevel((logLevel))
-	c.Logger.Infof("log level set to: %s", logLevel)
+	c.Logger.SetLevel(logLevel)
+	c.Logger.Infof("log level set to: %s", logLevel.String())
 }
