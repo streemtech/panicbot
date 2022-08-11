@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
-	"time"
-
 	"github.com/bwmarrin/discordgo"
+	"github.com/k0kubun/pp/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/twilio/twilio-go"
+	"os"
+	"os/signal"
 	"sigs.k8s.io/yaml"
+	"time"
 )
 
 // TODO: Change debug logs to info.
@@ -23,14 +23,15 @@ type Config struct {
 	DiscordBotToken  string
 	GuildID          string
 	PrimaryChannelID string
-	AlertingMethods  *AlertingMethods
-	Voting           *Voting
+	AlertingMethods  AlertingMethods
+	Voting           Voting
 }
 type AlertingMethods struct {
-	Twilio *Twilio
-	Email  *Email
+	Twilio Twilio
+	Email  Email
 }
 type Voting struct {
+	ContactOnVote *ContactOnVote
 	RequiredVotes struct {
 		PanicAlert int
 		PanicBan   int
@@ -63,7 +64,6 @@ type Voting struct {
 			Hour int
 		}
 	}
-	ContactOnVote *ContactOnVote
 }
 type ContactOnVote struct {
 	Discord struct {
@@ -129,6 +129,7 @@ func main() {
 	<-stop
 
 	c.Logger.Infof("Gracefully shutting down.")
+	pp.Println(c.Config)
 }
 
 func (c *Container) configChanged(load bool) error {
