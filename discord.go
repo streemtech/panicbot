@@ -186,7 +186,20 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 	// Create an array of pointers to discordgo.ApplicationCommand structs
 	commands := []*discordgo.ApplicationCommand{
 		{
-			Name:              "user",
+			Name:              "panicalert",
+			Description:       "Start an alert admin vote.",
+			DefaultPermission: &def,
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "message",
+					Description: "The message to send to the admin.",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:              "panicban",
 			Description:       "The user whom the ban vote is about.",
 			DefaultPermission: &def,
 			Options: []*discordgo.ApplicationCommandOption{
@@ -201,19 +214,6 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 					Name:        "days",
 					Description: "The number of days of previous messages to delete",
 					Required:    false,
-				},
-			},
-		},
-		{
-			Name:              "panicalert",
-			Description:       "Initializes an alert admin vote.",
-			DefaultPermission: &def,
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "message",
-					Description: "The message to send to the admin.",
-					Required:    true,
 				},
 			},
 		},
