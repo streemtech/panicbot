@@ -58,15 +58,37 @@ func (Discord *DiscordImpl) SendDM(userID string, message string) (*discordgo.Me
 	return Discord.SendChannelMessage(channel.ID, message)
 }
 
+func PanicAlertCallback(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// TODO write logic for starting a panicalert vote
+	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
+	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
+	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
+	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
+}
+
+func PanicBanCallback(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// TODO write logic for starting a panicban vote
+	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
+	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
+	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
+	// TODO if enough votes then call BanUser method
+	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
+}
+
+func EmbedReactionCallback(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// TODO use this for whenever we recieve a reaction to a panicalert / panicban
+	// This function will be used to tally up the votes and then take action.
+}
+
 type DiscordImpl struct {
 	botToken              string
 	guildID               string
 	primaryChannelID      string
 	logger                *log.Logger
 	session               *discordgo.Session
-	embedReactionCallback func()
-	panicAlertCallback    func()
-	panicBanCallback      func()
+	embedReactionCallback func(s *discordgo.Session, i *discordgo.InteractionCreate)
+	panicAlertCallback    func(s *discordgo.Session, i *discordgo.InteractionCreate)
+	panicBanCallback      func(s *discordgo.Session, i *discordgo.InteractionCreate)
 }
 
 type DiscordImplArgs struct {
@@ -75,9 +97,9 @@ type DiscordImplArgs struct {
 	PrimaryChannelID      string
 	Logger                *log.Logger
 	Session               *discordgo.Session
-	EmbedReactionCallback func()
-	PanicAlertCallback    func()
-	PanicBanCallback      func()
+	EmbedReactionCallback func(s *discordgo.Session, i *discordgo.InteractionCreate)
+	PanicAlertCallback    func(s *discordgo.Session, i *discordgo.InteractionCreate)
+	PanicBanCallback      func(s *discordgo.Session, i *discordgo.InteractionCreate)
 }
 
 var _ Discord = (*DiscordImpl)(nil)
@@ -90,7 +112,7 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 	}
 	// Verify the logger is set
 	if args.Logger == nil {
-		return nil, fmt.Errorf("logger was not initialized")
+		return nil, fmt.Errorf("logger was not initialized: %+v", args.Logger)
 	}
 
 	// Initialize the bot, register the slash commands
@@ -100,32 +122,54 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 	}
 	// Create a DiscordImpl with args
 	discordImpl := &DiscordImpl{
-		botToken:           args.BotToken,
-		guildID:            args.GuildID,
-		logger:             args.Logger,
-		panicAlertCallback: args.PanicAlertCallback,
-		panicBanCallback:   args.PanicBanCallback,
-		primaryChannelID:   args.PrimaryChannelID,
-		session:            session,
+		botToken:              args.BotToken,
+		guildID:               args.GuildID,
+		primaryChannelID:      args.PrimaryChannelID,
+		logger:                args.Logger,
+		embedReactionCallback: args.EmbedReactionCallback,
+		panicAlertCallback:    args.PanicAlertCallback,
+		panicBanCallback:      args.PanicBanCallback,
+		session:               session,
 	}
 
 	if discordImpl.primaryChannelID == "" {
 		primaryChannel, err := discordImpl.findPrimaryChannelInGuild()
 		if err != nil {
-			return nil, fmt.Errorf("failed to determine primary channel in guild")
+			return nil, fmt.Errorf("failed to determine primary channel in guild: %s", err)
 		}
 		discordImpl.primaryChannelID = primaryChannel
 	}
-	// Most of the code in onBotStartup gets moved here.
+
 	discordImpl.logger.Info("running bot startup")
 
-	discordImpl.logger.Debugf("attaching slash command handler")
+	discordImpl.logger.Info("preparing Discord session")
 
-	// c.Logger.Debugf("reloading roles from config")
+	discordImpl.session, err = discordgo.New("Bot " + discordImpl.botToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare Discord session: %s", err)
+	}
+	discordImpl.logger.Info("opening websocket connection to Discord")
+
+	discordImpl.session.Open()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to open websocket connection to Discord: %s", err)
+	}
+
+	discordImpl.logger.Infof("successfully opened websocket connection to Discord")
+
+	discordImpl.logger.Infof("attaching slash command handler")
+
+	// c.Logger.Infof("reloading roles from config")
 	// err := c.reloadRoles()
 	// if err != nil {
 	// 	return fmt.Errorf("failed to reload config roles")
 	// }
+
+	err = discordImpl.registerSlashCommands()
+	if err != nil {
+		return nil, fmt.Errorf("failed to register slash commands: %s", err)
+	}
 
 	message, err := discordImpl.SendChannelMessage(discordImpl.primaryChannelID, "Hello! Thank you for inviting me!")
 	if err != nil {
@@ -137,66 +181,67 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 }
 
 func (Discord *DiscordImpl) registerSlashCommands() error {
-	Discord.logger.Debugf("registering slash commands")
+	Discord.logger.Infof("registering slash commands")
 	var def bool = false
-	_, err := Discord.session.ApplicationCommandCreate(Discord.session.State.User.ID, Discord.guildID, &discordgo.ApplicationCommand{
-		Name:              "panicban",
-		Description:       "Initializes a panic ban vote.",
-		DefaultPermission: &def,
-		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Type:        discordgo.ApplicationCommandOptionUser,
-				Name:        "user",
-				Description: "The user whom the ban vote is about.",
-				Required:    true,
-			},
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "reason",
-				Description: "Reason why this user should be banned.",
-				Required:    true,
-			},
-			{
-				Type:        discordgo.ApplicationCommandOptionInteger,
-				Name:        "days",
-				Description: "The number of days of previous messages to delete",
-				Required:    false,
+	// Create an array of pointers to discordgo.ApplicationCommand structs
+	commands := []*discordgo.ApplicationCommand{
+		{
+			Name:              "user",
+			Description:       "The user whom the ban vote is about.",
+			DefaultPermission: &def,
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "reason",
+					Description: "Reason why this user should be banned.",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "days",
+					Description: "The number of days of previous messages to delete",
+					Required:    false,
+				},
 			},
 		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create panic ban slash command: %s. Make sure that the bot has joined your server with the correct permissions", err.Error())
+		{
+			Name:              "panicalert",
+			Description:       "Initializes an alert admin vote.",
+			DefaultPermission: &def,
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "message",
+					Description: "The message to send to the admin.",
+					Required:    true,
+				},
+			},
+		},
 	}
-	_, err = Discord.session.ApplicationCommandCreate(Discord.session.State.User.ID, Discord.guildID, &discordgo.ApplicationCommand{
-		Name:              "panicalert",
-		Description:       "Initializes an alert admin vote.",
-		DefaultPermission: &def,
-		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "message",
-				Description: "The message to send to the admin.",
-				Required:    true,
-			},
-		},
+	// map the names of the commands to their callback
+	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"panicalert":    Discord.panicAlertCallback,
+		"panicban":      Discord.panicBanCallback,
+		"embedReaction": Discord.embedReactionCallback,
+	}
+
+	// Add a listener for when the Discord API fires an InteractionCreate event.
+	Discord.session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if handler, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
+			handler(s, i)
+		}
 	})
-	if err != nil {
-		return fmt.Errorf("failed to create panic alert slash command: %s. Make sure that the bot has joined your server with the correct permissions", err.Error())
+	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
+	for i, v := range commands {
+		cmd, err := Discord.session.ApplicationCommandCreate(Discord.session.State.User.ID, Discord.guildID, v)
+		if err != nil {
+			return fmt.Errorf("cannot create '%v' command: %v", v.Name, err)
+		}
+		registeredCommands[i] = cmd
 	}
 	return nil
 }
 
-// // TODO Add handler to deal with slash commands
-// func (Discord *DiscordImpl) handleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-// 	// Parse the information from the i
-// 	// Call the callback with s and information needed.
-// 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-// 		Type: discordgo.InteractionResponseChannelMessageWithSource,
-// 		Data: &discordgo.InteractionResponseData{
-// 			Content: "Hey there! Congratulations, you just executed your first slash command",
-// 		},
-// 	})
-// }
 func (Discord *DiscordImpl) findPrimaryChannelInGuild() (string, error) {
 	// The primary channel may be provided to us in the config.yml
 	if Discord.primaryChannelID != "" {
