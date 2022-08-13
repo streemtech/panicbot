@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-
-	"github.com/bwmarrin/discordgo"
 )
 
 // func (c *Container) reloadConfig(newConfig Config) (err error) {
@@ -25,21 +23,7 @@ func (c *Container) loadConfig(newConfig Config) (err error) {
 	c.Config = newConfig
 
 	if c.Config.DiscordBotToken == "" {
-		return fmt.Errorf("DiscordBotToken field cannot be empty")
+		return fmt.Errorf("DiscordBotToken cannot be empty, did you forget to set it in the config?")
 	}
-	c.Logger.Debugf("preparing session to Discord")
-	c.Discord, err = discordgo.New("Bot " + c.Config.DiscordBotToken)
-	if err != nil {
-		return fmt.Errorf("failed to prepare session to Discord")
-	}
-
-	c.Logger.Debugf("opening websocket connection to Discord")
-	err = c.Discord.Open()
-	if err != nil {
-		return fmt.Errorf("failed to open websocket connection to Discord")
-	}
-	c.Logger.Infof("successfully opened websocket connection to Discord")
-	c.onBotStartup()
-
 	return nil
 }
