@@ -5,9 +5,9 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/bwmarrin/discordgo"
 	"github.com/k0kubun/pp/v3"
 	log "github.com/sirupsen/logrus"
+	"github.com/streemtech/panicbot"
 	"github.com/twilio/twilio-go"
 	"sigs.k8s.io/yaml"
 )
@@ -19,6 +19,12 @@ import (
 // 	configureLogger()
 // 	watchFile(filePath string) error
 // }
+
+type AlertingMethods struct {
+	Twilio Twilio
+	Email  Email
+}
+
 type Config struct {
 	DiscordBotToken  string
 	GuildID          string
@@ -26,10 +32,55 @@ type Config struct {
 	AlertingMethods  AlertingMethods
 	Voting           Voting
 }
-type AlertingMethods struct {
-	Twilio Twilio
-	Email  Email
+
+type ContactOnVote struct {
+	Discord struct {
+		Users []string
+		Roles []string
+	}
+	Twilio struct {
+		PhoneNumbers []string
+	}
+	Email struct {
+		Addresses []string
+	}
 }
+
+type Container struct {
+	Config Config
+	Logger *log.Logger
+	// Discord          *discordgo.Session
+	Discord          panicbot.Discord
+	TwilioRestClient *twilio.RestClient
+}
+
+type Email struct {
+	Auth struct {
+		Identity string
+		Username string
+		Password string
+		Host     string
+	}
+	From           string
+	DefaultMessage string
+}
+type RateLimit struct {
+	PanicAlert struct {
+		Day  int
+		Hour int
+	}
+	PanicBan struct {
+		Day  int
+		Hour int
+	}
+}
+
+type Twilio struct {
+	AccountSID        string
+	AuthToken         string
+	TwilioPhoneNumber string
+}
+
 type Voting struct {
 	ContactOnVote ContactOnVote
 	RateLimit     RateLimit
@@ -56,51 +107,6 @@ type Voting struct {
 		PanicBan   string
 	}
 }
-type ContactOnVote struct {
-	Discord struct {
-		Users []string
-		Roles []string
-	}
-	Twilio struct {
-		PhoneNumbers []string
-	}
-	Email struct {
-		Addresses []string
-	}
-}
-type RateLimit struct {
-	PanicAlert struct {
-		Day  int
-		Hour int
-	}
-	PanicBan struct {
-		Day  int
-		Hour int
-	}
-}
-type Twilio struct {
-	AccountSID        string
-	AuthToken         string
-	TwilioPhoneNumber string
-}
-type Email struct {
-	Auth struct {
-		Identity string
-		Username string
-		Password string
-		Host     string
-	}
-	From           string
-	DefaultMessage string
-}
-type Container struct {
-	Config           Config
-	Logger           *log.Logger
-	Discord          *discordgo.Session
-	TwilioRestClient *twilio.RestClient
-}
-
-// var _ Boot = (*Container)(nil)
 
 func main() {
 	c := new(Container)
@@ -113,15 +119,26 @@ func main() {
 	if err != nil {
 		c.Logger.Fatalf("failed to start timer to check for update roles : %s", err.Error())
 	}
-	err = c.registerSlashCommands()
+	_, err = panicbot.NewDiscord(&panicbot.DiscordImplArgs{
+		BotToken:         c.Config.DiscordBotToken,
+		GuildID:          c.Config.GuildID,
+		PrimaryChannelID: c.Config.PrimaryChannelID,
+		Logger:           c.Logger,
+		Session:          nil,
+	})
+
 	if err != nil {
-		c.Logger.Fatalf("failed to register slash commands : %s", err.Error())
+		c.Logger.Fatalf("failed to create discord session: %s", err)
 	}
+
 	// err = c.watchFile("./config.yml")
 	// if err != nil {
 	// 	c.Logger.Fatalf("failed to watch configuration file: %s", err.Error())
 	// }
-	defer c.Discord.Close()
+	// Without the session I can't call Close()
+	// defer c.Discord.Close()
+
+	pp.Println(c.Config)
 
 	c.Logger.Debugf("create channel to listen for os interrupt")
 	stop := make(chan os.Signal, 1)
@@ -130,7 +147,6 @@ func main() {
 	<-stop
 
 	c.Logger.Infof("Gracefully shutting down.")
-	pp.Println(c.Config)
 }
 
 func (c *Container) configChanged(load bool) error {
