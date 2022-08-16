@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/k0kubun/pp/v3"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/bwmarrin/discordgo"
@@ -58,37 +59,15 @@ func (Discord *DiscordImpl) SendDM(userID string, message string) (*discordgo.Me
 	return Discord.SendChannelMessage(channel.ID, message)
 }
 
-func PanicAlertCallback(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// TODO write logic for starting a panicalert vote
-	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
-	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
-	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
-	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
-}
-
-func PanicBanCallback(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// TODO write logic for starting a panicban vote
-	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
-	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
-	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
-	// TODO if enough votes then call BanUser method
-	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
-}
-
-func EmbedReactionCallback(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// TODO use this for whenever we recieve a reaction to a panicalert / panicban
-	// This function will be used to tally up the votes and then take action.
-}
-
 type DiscordImpl struct {
 	botToken              string
 	guildID               string
 	primaryChannelID      string
 	logger                *log.Logger
 	session               *discordgo.Session
-	embedReactionCallback func(s *discordgo.Session, i *discordgo.InteractionCreate)
-	panicAlertCallback    func(s *discordgo.Session, i *discordgo.InteractionCreate)
-	panicBanCallback      func(s *discordgo.Session, i *discordgo.InteractionCreate)
+	embedReactionCallback func()
+	panicAlertCallback    func()
+	panicBanCallback      func()
 }
 
 type DiscordImplArgs struct {
@@ -97,9 +76,9 @@ type DiscordImplArgs struct {
 	PrimaryChannelID      string
 	Logger                *log.Logger
 	Session               *discordgo.Session
-	EmbedReactionCallback func(s *discordgo.Session, i *discordgo.InteractionCreate)
-	PanicAlertCallback    func(s *discordgo.Session, i *discordgo.InteractionCreate)
-	PanicBanCallback      func(s *discordgo.Session, i *discordgo.InteractionCreate)
+	EmbedReactionCallback func()
+	PanicAlertCallback    func()
+	PanicBanCallback      func()
 }
 
 var _ Discord = (*DiscordImpl)(nil)
@@ -179,6 +158,13 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 
 	return discordImpl, nil
 }
+func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Step 1: Figure out which one of the three interactions just happened.
+	// Step 2: Pull the data from the interaction that we care about(going to depend on which interaction)
+	// Step 3: Pass that information to the matching callback.
+	// Step 4: ? Handle the response to the command so that discord doesn't error. We should not pass the session or the interaction create to the callbacks.
+	pp.Println(i)
+}
 
 func (Discord *DiscordImpl) registerSlashCommands() error {
 	Discord.logger.Infof("registering slash commands")
@@ -218,19 +204,9 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 			},
 		},
 	}
-	// map the names of the commands to their callback
-	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-		"panicalert":    Discord.panicAlertCallback,
-		"panicban":      Discord.panicBanCallback,
-		"embedReaction": Discord.embedReactionCallback,
-	}
 
 	// Add a listener for when the Discord API fires an InteractionCreate event.
-	Discord.session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if handler, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
-			handler(s, i)
-		}
-	})
+	Discord.session.AddHandler(Discord.handleInteractions)
 	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
 	for i, v := range commands {
 		cmd, err := Discord.session.ApplicationCommandCreate(Discord.session.State.User.ID, Discord.guildID, v)

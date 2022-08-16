@@ -108,6 +108,27 @@ type Voting struct {
 	}
 }
 
+func (c *Container) PanicAlertCallback() {
+	// TODO write logic for starting a panicalert vote
+	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
+	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
+	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
+	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
+}
+
+func (c *Container) PanicBanCallback() {
+	// TODO write logic for starting a panicban vote
+	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
+	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
+	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
+	// TODO if enough votes then call BanUser method
+	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
+}
+
+func (c *Container) EmbedReactionCallback() {
+	// TODO use this for whenever we recieve a reaction to a panicalert / panicban
+	// This function will be used to tally up the votes and then take action.
+}
 func main() {
 	c := new(Container)
 	c.configureLogger()
@@ -119,12 +140,14 @@ func main() {
 	if err != nil {
 		c.Logger.Fatalf("failed to start timer to check for update roles : %s", err.Error())
 	}
-	_, err = panicbot.NewDiscord(&panicbot.DiscordImplArgs{
-		BotToken:         c.Config.DiscordBotToken,
-		GuildID:          c.Config.GuildID,
-		PrimaryChannelID: c.Config.PrimaryChannelID,
-		Logger:           c.Logger,
-		Session:          nil,
+	c.Discord, err = panicbot.NewDiscord(&panicbot.DiscordImplArgs{
+		BotToken:              c.Config.DiscordBotToken,
+		GuildID:               c.Config.GuildID,
+		PrimaryChannelID:      c.Config.PrimaryChannelID,
+		Logger:                c.Logger,
+		EmbedReactionCallback: c.EmbedReactionCallback,
+		PanicAlertCallback:    c.PanicAlertCallback,
+		PanicBanCallback:      c.PanicBanCallback,
 	})
 
 	if err != nil {
