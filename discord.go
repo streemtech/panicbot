@@ -38,9 +38,12 @@ func (Discord *DiscordImpl) BanUser(userID string, reason string, days int) (dis
 }
 
 func (Discord *DiscordImpl) SendChannelMessage(channelID string, content string) (*discordgo.Message, error) {
+	if channelID == "" {
+		channelID = Discord.primaryChannelID
+	}
 	message, err := Discord.session.ChannelMessageSend(channelID, content)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send message to primary channel")
+		return nil, fmt.Errorf("failed to send message to channel")
 	}
 	Discord.logger.WithFields(log.Fields{
 		"author":    message.Author,
@@ -66,7 +69,7 @@ type DiscordImpl struct {
 	logger                *log.Logger
 	session               *discordgo.Session
 	embedReactionCallback func()
-	panicAlertCallback    func()
+	panicAlertCallback    func(message string)
 	panicBanCallback      func()
 }
 
@@ -77,7 +80,7 @@ type DiscordImplArgs struct {
 	Logger                *log.Logger
 	Session               *discordgo.Session
 	EmbedReactionCallback func()
-	PanicAlertCallback    func()
+	PanicAlertCallback    func(message string)
 	PanicBanCallback      func()
 }
 
@@ -160,6 +163,34 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 }
 func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Step 1: Figure out which one of the three interactions just happened.
+	switch i.Interaction.Type {
+	case 2:
+		if i.ApplicationCommandData().Name == "panicalert" {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					// Here is where we would create the JSON Payload for an embedded message.
+					// A listener for the InteractionMessageComponent has already been added.
+					// So theoretically, whenever a button is clicked on we can respond to it with the embedButtonCallback.
+					Content: "Beginning panic alert vote",
+				},
+			})
+			Discord.panicAlertCallback("A panic alert has started")
+		}
+		if i.ApplicationCommandData().Name == "panicban" {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Beginning panic ban vote",
+				},
+			})
+			Discord.panicBanCallback()
+		}
+	// This makes the assumption that an InteractionMessageComponent event is fired whenever an embedded button is clicked on.
+	// Because a button is a component of a message.
+	case 3:
+		Discord.embedReactionCallback()
+	}
 	// Step 2: Pull the data from the interaction that we care about(going to depend on which interaction)
 	// Step 3: Pass that information to the matching callback.
 	// Step 4: ? Handle the response to the command so that discord doesn't error. We should not pass the session or the interaction create to the callbacks.
@@ -190,6 +221,12 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 			DefaultPermission: &def,
 			Options: []*discordgo.ApplicationCommandOption{
 				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "Name of the user to ban",
+					Required:    true,
+				},
+				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "reason",
 					Description: "Reason why this user should be banned.",
@@ -207,13 +244,11 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 
 	// Add a listener for when the Discord API fires an InteractionCreate event.
 	Discord.session.AddHandler(Discord.handleInteractions)
-	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
-	for i, v := range commands {
-		cmd, err := Discord.session.ApplicationCommandCreate(Discord.session.State.User.ID, Discord.guildID, v)
+	for _, v := range commands {
+		_, err := Discord.session.ApplicationCommandCreate(Discord.session.State.User.ID, Discord.guildID, v)
 		if err != nil {
 			return fmt.Errorf("cannot create '%v' command: %v", v.Name, err)
 		}
-		registeredCommands[i] = cmd
 	}
 	return nil
 }
