@@ -108,9 +108,14 @@ type Voting struct {
 	}
 }
 
-func (c *Container) PanicAlertCallback() {
+func (c *Container) PanicAlertCallback(message string) {
 	// TODO write logic for starting a panicalert vote
 	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
+	if true {
+		for _, userID := range c.Config.Voting.ContactOnVote.Discord.Users {
+			c.Discord.SendDM(userID, message)
+		}
+	}
 	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
 	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
 	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
