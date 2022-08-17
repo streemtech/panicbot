@@ -108,6 +108,7 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 		return nil, fmt.Errorf("failed to start bot, PanicBanCallback was not passed in")
 	}
 
+	args.Logger.Info("preparing Discord session")
 	// Initialize the bot, register the slash commands
 	session, err := discordgo.New("Bot " + args.BotToken)
 	if err != nil {
@@ -134,10 +135,6 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 	}
 
 	discordImpl.logger.Info("running bot startup")
-
-	discordImpl.logger.Info("preparing Discord session")
-
-	discordImpl.session = session
 
 	discordImpl.logger.Info("opening websocket connection to Discord")
 
