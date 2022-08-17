@@ -87,14 +87,25 @@ type DiscordImplArgs struct {
 var _ Discord = (*DiscordImpl)(nil)
 
 func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
-	// Validate that all callbacks are set
 	// Validate that Guild ID is set. If primaryChannelID is not set calculate it.
 	if args.GuildID == "" {
 		return nil, fmt.Errorf("GuildID cannot be empty. Did you forget to set it in the config? %s", args.GuildID)
 	}
+
 	// Verify the logger is set
 	if args.Logger == nil {
 		return nil, fmt.Errorf("logger was not initialized: %+v", args.Logger)
+	}
+
+	// Validate that all callbacks are set
+	if args.EmbedReactionCallback == nil {
+		return nil, fmt.Errorf("failed to start bot, EmbedReactionCallback was not passed in")
+	}
+	if args.PanicAlertCallback == nil {
+		return nil, fmt.Errorf("failed to start bot, PanicAlertCallback was not passed in")
+	}
+	if args.PanicBanCallback == nil {
+		return nil, fmt.Errorf("failed to start bot, PanicBanCallback was not passed in")
 	}
 
 	// Initialize the bot, register the slash commands
@@ -126,10 +137,8 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 
 	discordImpl.logger.Info("preparing Discord session")
 
-	discordImpl.session, err = discordgo.New("Bot " + discordImpl.botToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare Discord session: %s", err)
-	}
+	discordImpl.session = session
+
 	discordImpl.logger.Info("opening websocket connection to Discord")
 
 	discordImpl.session.Open()
