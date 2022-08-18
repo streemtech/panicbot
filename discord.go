@@ -12,6 +12,11 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+type Discord interface {
+	BanUser(userID string, reason string, days int) (discordgo.GuildBan, error)
+	SendChannelMessage(channelID string, message string) (*discordgo.Message, error)
+	SendDM(userID string, message string) (*discordgo.Message, error)
+}
 type AllowedToVote struct {
 	PanicAlert struct {
 		Users []string
@@ -22,13 +27,6 @@ type AllowedToVote struct {
 		Roles []string
 	}
 }
-
-type Discord interface {
-	BanUser(userID string, reason string, days int) (discordgo.GuildBan, error)
-	SendChannelMessage(channelID string, message string) (*discordgo.Message, error)
-	SendDM(userID string, message string) (*discordgo.Message, error)
-}
-
 type DiscordImpl struct {
 	allowedToVote         AllowedToVote
 	botToken              string
