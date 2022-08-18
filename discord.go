@@ -13,6 +13,7 @@ import (
 type Discord interface {
 	BanUser(userID string, reason string, days int) (discordgo.GuildBan, error)
 	SendChannelMessage(channelID string, message string) (*discordgo.Message, error)
+	SendDMEmbed(userID string, embed *discordgo.MessageEmbed) (*discordgo.Message, error)
 	SendDM(userID string, message string) (*discordgo.Message, error)
 }
 
@@ -50,16 +51,38 @@ func (Discord *DiscordImpl) SendChannelMessage(channelID string, content string)
 		"channelID": message.ChannelID,
 		"guildID":   message.GuildID,
 		"message":   message.Content,
+		"messageID": message.ID,
 		"dateTime":  time.Now().String(),
 	})
 	return message, nil
 }
+
 func (Discord *DiscordImpl) SendDM(userID string, message string) (*discordgo.Message, error) {
 	channel, err := Discord.session.UserChannelCreate(userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create private message channel with userID: %s", userID)
 	}
 	return Discord.SendChannelMessage(channel.ID, message)
+}
+
+func (Discord *DiscordImpl) SendDMEmbed(userID string, embed *discordgo.MessageEmbed) (*discordgo.Message, error) {
+	channel, err := Discord.session.UserChannelCreate(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create private message channel with userID: %s", userID)
+	}
+	message, err := Discord.session.ChannelMessageSendEmbed(channel.ID, embed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send private message with embed to user with ID: %s", userID)
+	}
+	Discord.logger.WithFields(log.Fields{
+		"author":        message.Author,
+		"channelID":     message.ChannelID,
+		"message":       message.Content,
+		"messageID":     message.ID,
+		"messageEmbeds": message.Embeds,
+		"dateTime":      time.Now().String(),
+	})
+	return message, nil
 }
 
 type DiscordImpl struct {
@@ -172,7 +195,7 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 	switch i.Interaction.Type {
 	case 2:
 		if i.ApplicationCommandData().Name == "panicalert" {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					// Here is where we would create the JSON Payload for an embedded message.
@@ -181,14 +204,28 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 					Content: "Beginning panic alert vote",
 				},
 			})
+			if err != nil {
+				s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+					Content: "Something went wrong 😱",
+				})
+			}
 			Discord.panicAlertCallback("A panic alert has started")
 		}
 		if i.ApplicationCommandData().Name == "panicban" {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "Beginning panic ban vote",
+					Content: "🚨A Panic Ban vote has started! Voters check your DMs. This message will self-destruct in five seconds.🚨",
 				},
+			})
+			if err != nil {
+				s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+					Content: "Something went wrong 😱",
+				})
+				return
+			}
+			time.AfterFunc(time.Second*5, func() {
+				s.InteractionResponseDelete(i.Interaction)
 			})
 			Discord.panicBanCallback()
 		}
