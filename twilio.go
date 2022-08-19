@@ -13,18 +13,18 @@ type Twilio interface {
 }
 type TwilioImpl struct {
 	accountSID        string
-	authToken         string
+	apiKey            string
+	apiSecret         string
 	twilioPhoneNumber string
 	logger            *log.Logger
-	sendMessage       func(toNumber, fromNumber, body string)
 	client            *twilio.RestClient
 }
 type TwilioImplArgs struct {
 	AccountSID        string
-	AuthToken         string
+	APIKey            string
+	APISecret         string
 	TwilioPhoneNumber string
 	Logger            *log.Logger
-	SendMessage       func(toNumber, fromNumber, body string)
 	Client            *twilio.RestClient
 }
 
@@ -50,8 +50,11 @@ func NewTwilio(args *TwilioImplArgs) (*TwilioImpl, error) {
 		return nil, fmt.Errorf("AccountSID cannot be empty. Did you forget to set it in the config?")
 	}
 
-	if args.AuthToken == "" {
-		return nil, fmt.Errorf("AuthToken cannot be empty. Did you forget to set it in the config?")
+	if args.APIKey == "" {
+		return nil, fmt.Errorf("APIKey cannot be empty. Did you forget to set it in the config?")
+	}
+	if args.APISecret == "" {
+		return nil, fmt.Errorf("APISecret cannot be empty. Did you forget to set it in the config?")
 	}
 
 	if args.TwilioPhoneNumber == "" {
@@ -59,13 +62,14 @@ func NewTwilio(args *TwilioImplArgs) (*TwilioImpl, error) {
 	}
 
 	client := twilio.NewRestClientWithParams(twilio.ClientParams{
-		// Username:   args.APIKey,
-		// Password:   args.APISecret,
-		Username: args.AccountSID,
-		Password: args.AuthToken,
+		Username:   args.APIKey,
+		Password:   args.APISecret,
+		AccountSid: args.AccountSID,
 	})
 	twilioImpl := &TwilioImpl{
 		accountSID:        args.AccountSID,
+		apiKey:            args.APIKey,
+		apiSecret:         args.APISecret,
 		twilioPhoneNumber: args.TwilioPhoneNumber,
 		client:            client,
 		logger:            args.Logger,

@@ -76,7 +76,8 @@ type RateLimit struct {
 
 type Twilio struct {
 	AccountSID        string
-	AuthToken         string
+	APIKey            string
+	APISecret         string
 	TwilioPhoneNumber string
 }
 
@@ -107,9 +108,9 @@ type Voting struct {
 	RateLimit     RateLimit
 }
 
-func (c *Container) SendText() {
+func (c *Container) SendText(message string) {
 	for _, phoneNumber := range c.Config.Voting.ContactOnVote.Twilio.PhoneNumbers {
-		c.Twilio.SendMessage(phoneNumber, c.Config.AlertingMethods.Twilio.TwilioPhoneNumber, "🚨Panic Ban Vote🚨\n\n Gami has triggered a Panic Ban vote against Xanzibaer.\n\n Reason: Blah\n\n Action Needed: Hop on Discord \n\n Ignore this message if you do not want to vote.")
+		c.Twilio.SendMessage(phoneNumber, c.Config.AlertingMethods.Twilio.TwilioPhoneNumber, message)
 	}
 }
 
@@ -199,8 +200,9 @@ func main() {
 		c.Logger.Fatalf("failed to create Discord session: %s", err)
 	}
 	c.Twilio, err = panicbot.NewTwilio(&panicbot.TwilioImplArgs{
-		AuthToken:         c.Config.AlertingMethods.Twilio.AuthToken,
 		AccountSID:        c.Config.AlertingMethods.Twilio.AccountSID,
+		APIKey:            c.Config.AlertingMethods.Twilio.APIKey,
+		APISecret:         c.Config.AlertingMethods.Twilio.APISecret,
 		TwilioPhoneNumber: c.Config.AlertingMethods.Twilio.TwilioPhoneNumber,
 		Logger:            c.Logger,
 	})
