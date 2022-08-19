@@ -196,7 +196,7 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 
 	message, err := discordImpl.SendChannelMessage(discordImpl.primaryChannelID, "Hello! Thank you for inviting me!")
 	if err != nil {
-		return nil, fmt.Errorf("failed to send welcome message: %s", message.Content)
+		return nil, fmt.Errorf("failed to send welcome message: %w", err)
 	}
 	discordImpl.logger.Infof("successfully sent welcome message: %s", message.Content)
 
