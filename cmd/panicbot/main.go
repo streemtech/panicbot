@@ -48,9 +48,8 @@ type ContactOnVote struct {
 }
 
 type Container struct {
-	Config Config
-	Logger *log.Logger
-	// Discord          *discordgo.Session
+	Config           Config
+	Logger           *log.Logger
 	Discord          panicbot.Discord
 	TwilioRestClient *twilio.RestClient
 }
@@ -83,12 +82,6 @@ type Twilio struct {
 }
 
 type Voting struct {
-	ContactOnVote ContactOnVote
-	RateLimit     RateLimit
-	RequiredVotes struct {
-		PanicAlert int
-		PanicBan   int
-	}
 	AllowedToVote struct {
 		PanicAlert struct {
 			Users []string
@@ -99,14 +92,20 @@ type Voting struct {
 			Roles []string
 		}
 	}
-	VoteTimers struct {
-		PanicAlertVoteTimer string
-		PanicBanVoteTimer   string
-	}
 	Cooldown struct {
 		PanicAlert string
 		PanicBan   string
 	}
+	RequiredVotes struct {
+		PanicAlert int
+		PanicBan   int
+	}
+	VoteTimers struct {
+		PanicAlertVoteTimer string
+		PanicBanVoteTimer   string
+	}
+	ContactOnVote ContactOnVote
+	RateLimit     RateLimit
 }
 
 func (c *Container) PanicAlertCallback(message string) {
@@ -181,6 +180,7 @@ func main() {
 		c.Logger.Fatalf("failed to start timer to check for update roles : %s", err.Error())
 	}
 	c.Discord, err = panicbot.NewDiscord(&panicbot.DiscordImplArgs{
+		AllowedToVote:         c.Config.Voting.AllowedToVote,
 		BotToken:              c.Config.DiscordBotToken,
 		GuildID:               c.Config.GuildID,
 		PrimaryChannelID:      c.Config.PrimaryChannelID,
@@ -210,6 +210,7 @@ func main() {
 	<-stop
 
 	c.Logger.Infof("Gracefully shutting down.")
+	c.Discord.SendChannelMessage("", "So long!")
 }
 
 func (c *Container) configChanged(load bool) error {

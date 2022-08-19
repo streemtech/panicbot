@@ -6,6 +6,8 @@ import (
 
 	"github.com/k0kubun/pp/v3"
 	log "github.com/sirupsen/logrus"
+	"github.com/streemtech/panicbot/internal/logic"
+	"github.com/streemtech/panicbot/internal/slice"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -22,6 +24,41 @@ type UserRoles struct {
 	UserID string
 	Roles  []string
 }
+type AllowedToVote struct {
+	PanicAlert struct {
+		Users []string
+		Roles []string
+	}
+	PanicBan struct {
+		Users []string
+		Roles []string
+	}
+}
+type DiscordImpl struct {
+	allowedToVote         AllowedToVote
+	botToken              string
+	guildID               string
+	primaryChannelID      string
+	logger                *log.Logger
+	session               *discordgo.Session
+	embedReactionCallback func()
+	panicAlertCallback    func(message string)
+	panicBanCallback      func(userID, targetUserID, reason string)
+}
+
+type DiscordImplArgs struct {
+	AllowedToVote         AllowedToVote
+	BotToken              string
+	GuildID               string
+	PrimaryChannelID      string
+	Logger                *log.Logger
+	Session               *discordgo.Session
+	EmbedReactionCallback func()
+	PanicAlertCallback    func(message string)
+	PanicBanCallback      func(userID, targetUserID, reason string)
+}
+
+var _ Discord = (*DiscordImpl)(nil)
 
 func (Discord *DiscordImpl) BanUser(userID string, reason string, days int) (discordgo.GuildBan, error) {
 
@@ -131,29 +168,26 @@ func (Discord *DiscordImpl) GetAllGuildMembers() ([]UserRoles, error) {
 
 }
 
-type DiscordImpl struct {
-	botToken              string
-	guildID               string
-	primaryChannelID      string
-	logger                *log.Logger
-	session               *discordgo.Session
-	embedReactionCallback func()
-	panicAlertCallback    func(message string)
-	panicBanCallback      func(userID, targetUserID, reason string)
+func handlePermissionsBadRequest(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// TODO 3: Track if the user without permissions is doing this multiple times and stop the bot from responding.
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "I'm sorry, you do not have permission to use this command.",
+		},
+	})
 }
 
-type DiscordImplArgs struct {
-	BotToken              string
-	GuildID               string
-	PrimaryChannelID      string
-	Logger                *log.Logger
-	Session               *discordgo.Session
-	EmbedReactionCallback func()
-	PanicAlertCallback    func(message string)
-	PanicBanCallback      func(userID, targetUserID, reason string)
-}
+func hasCommandPermissions(userIDsAllowedToVote []string, userID string, userRolesAllowedToVote []string, userRoles []string) bool {
 
-var _ Discord = (*DiscordImpl)(nil)
+	userHasPermissions := slice.Contains(userIDsAllowedToVote, userID)
+	roleHasPermissions := false
+	// Check each role a user has against the list of userRolesAllowedToVote
+	for _, v := range userRoles {
+		roleHasPermissions = slice.Contains(userRolesAllowedToVote, v)
+	}
+	return logic.Or(userHasPermissions, roleHasPermissions)
+}
 
 func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 	// Validate that Guild ID is set. If primaryChannelID is not set calculate it.
@@ -185,6 +219,7 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 	}
 	// Create a DiscordImpl with args
 	discordImpl := &DiscordImpl{
+		allowedToVote:         args.AllowedToVote,
 		botToken:              args.BotToken,
 		guildID:               args.GuildID,
 		primaryChannelID:      args.PrimaryChannelID,
@@ -240,42 +275,50 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 	// Step 1: Figure out which one of the three interactions just happened.
 	switch i.Interaction.Type {
 	case discordgo.InteractionApplicationCommand:
-		slashCommandData := i.ApplicationCommandData()
 		if i.ApplicationCommandData().Name == "panicalert" {
-			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					// Here is where we would create the JSON Payload for an embedded message.
-					// A listener for the InteractionMessageComponent has already been added.
-					// So theoretically, whenever a button is clicked on we can respond to it with the embedButtonCallback.
-					Content: "Beginning panic alert vote",
-				},
-			})
-			if err != nil {
-				s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-					Content: "Something went wrong 😱",
+			if !hasCommandPermissions(Discord.allowedToVote.PanicAlert.Users, i.Member.User.ID, Discord.allowedToVote.PanicAlert.Roles, i.Member.Roles) {
+				handlePermissionsBadRequest(s, i)
+			} else {
+				err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						// Here is where we would create the JSON Payload for an embedded message.
+						// A listener for the InteractionMessageComponent has already been added.
+						// So theoretically, whenever a button is clicked on we can respond to it with the embedButtonCallback.
+						Content: "Beginning panic alert vote",
+					},
 				})
-				return
+				if err != nil {
+					s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+						Content: "Something went wrong 😱",
+					})
+					return
+				}
+				Discord.panicAlertCallback("A panic alert has started")
 			}
-			Discord.panicAlertCallback("A panic alert has started")
 		}
 		if i.ApplicationCommandData().Name == "panicban" {
-			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "🚨A Panic Ban vote has started! Voters check your DMs. This message will self-destruct in one second.🚨",
-				},
-			})
-			if err != nil {
-				s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-					Content: "Something went wrong 😱",
+			slashCommandData := i.ApplicationCommandData()
+			if !hasCommandPermissions(Discord.allowedToVote.PanicBan.Users, i.Member.User.ID, Discord.allowedToVote.PanicBan.Roles, i.Member.Roles) {
+				handlePermissionsBadRequest(s, i)
+			} else {
+				err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "🚨A Panic Ban vote has started! Voters check your DMs. This message will self-destruct in one second.🚨",
+					},
 				})
-				return
+				if err != nil {
+					s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+						Content: "Something went wrong 😱",
+					})
+					return
+				}
+				time.AfterFunc(time.Second*1, func() {
+					s.InteractionResponseDelete(i.Interaction)
+				})
+				Discord.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string))
 			}
-			time.AfterFunc(time.Second*1, func() {
-				s.InteractionResponseDelete(i.Interaction)
-			})
-			Discord.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string))
 		}
 	// This makes the assumption that an InteractionMessageComponent event is fired whenever an embedded button is clicked on.
 	// Because a button is a component of a message.
