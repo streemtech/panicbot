@@ -175,6 +175,7 @@ func main() {
 	<-stop
 
 	c.Logger.Infof("Gracefully shutting down.")
+	c.Discord.SendChannelMessage("", "So long!")
 }
 
 func (c *Container) configChanged(load bool) error {
