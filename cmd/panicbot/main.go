@@ -107,6 +107,12 @@ type Voting struct {
 	RateLimit     RateLimit
 }
 
+func (c *Container) SendText() {
+	for _, phoneNumber := range c.Config.Voting.ContactOnVote.Twilio.PhoneNumbers {
+		c.Twilio.SendMessage(phoneNumber, c.Config.AlertingMethods.Twilio.TwilioPhoneNumber, "🚨Panic Ban Vote🚨\n\n Gami has triggered a Panic Ban vote against Xanzibaer.\n\n Reason: Blah\n\n Action Needed: Hop on Discord \n\n Ignore this message if you do not want to vote.")
+	}
+}
+
 func (c *Container) PanicAlertCallback(message string) {
 	// TODO write logic for starting a panicalert vote
 	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
@@ -124,7 +130,7 @@ func (c *Container) PanicAlertCallback(message string) {
 	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
 }
 
-func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days int) {
+func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days float64) {
 	// TODO write logic for starting a panicban vote
 	content := fmt.Sprintf("User <@%s> has triggered a Panic Ban vote against User <@%s>", userID, targetUserID)
 	description := fmt.Sprintf("**Reason:** %s\n\n**Action Needed:** Click the Ban User button to cast your vote.\n\n**Ignore this message if you do not want to vote.**", reason)
@@ -190,7 +196,17 @@ func main() {
 	})
 
 	if err != nil {
-		c.Logger.Fatalf("failed to create discord session: %s", err)
+		c.Logger.Fatalf("failed to create Discord session: %s", err)
+	}
+	c.Twilio, err = panicbot.NewTwilio(&panicbot.TwilioImplArgs{
+		AuthToken:         c.Config.AlertingMethods.Twilio.AuthToken,
+		AccountSID:        c.Config.AlertingMethods.Twilio.AccountSID,
+		TwilioPhoneNumber: c.Config.AlertingMethods.Twilio.TwilioPhoneNumber,
+		Logger:            c.Logger,
+	})
+
+	if err != nil {
+		c.Logger.Fatalf("failed to create Twilio Rest Client: %s", err)
 	}
 
 	// err = c.watchFile("./config.yml")
