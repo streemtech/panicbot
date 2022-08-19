@@ -13,8 +13,14 @@ import (
 type Discord interface {
 	BanUser(userID string, reason string, days int) (discordgo.GuildBan, error)
 	SendChannelMessage(channelID string, message string) (*discordgo.Message, error)
-	SendDMEmbed(userID string, embed *discordgo.MessageEmbed) (*discordgo.Message, error)
-	SendDM(userID string, message string) (*discordgo.Message, error)
+	SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID string) error
+	SendDM(userID string, message string) error
+	GetAllGuildMembers() ([]UserRoles, error)
+}
+
+type UserRoles struct {
+	UserID string
+	Roles  []string
 }
 
 func (Discord *DiscordImpl) BanUser(userID string, reason string, days int) (discordgo.GuildBan, error) {
@@ -57,32 +63,72 @@ func (Discord *DiscordImpl) SendChannelMessage(channelID string, content string)
 	return message, nil
 }
 
-func (Discord *DiscordImpl) SendDM(userID string, message string) (*discordgo.Message, error) {
-	channel, err := Discord.session.UserChannelCreate(userID)
+func (Discord *DiscordImpl) SendDM(userID string, message string) error {
+	_, err := Discord.SendChannelMessage(userID, message)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create private message channel with userID: %s", userID)
+		return fmt.Errorf("failed to send direct message to user with ID: %s", userID)
 	}
-	return Discord.SendChannelMessage(channel.ID, message)
+	return nil
 }
 
-func (Discord *DiscordImpl) SendDMEmbed(userID string, embed *discordgo.MessageEmbed) (*discordgo.Message, error) {
+func (Discord *DiscordImpl) SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID string) error {
 	channel, err := Discord.session.UserChannelCreate(userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create private message channel with userID: %s", userID)
+		return fmt.Errorf("failed to create private message channel with userID: %s", userID)
 	}
-	message, err := Discord.session.ChannelMessageSendEmbed(channel.ID, embed)
+	message := &discordgo.MessageSend{
+		Content: content,
+		Components: []discordgo.MessageComponent{
+			discordgo.ActionsRow{Components: []discordgo.MessageComponent{discordgo.Button{
+				Label:    buttonLabel,
+				Style:    discordgo.DangerButton,
+				CustomID: buttonID,
+				Emoji:    discordgo.ComponentEmoji{Name: "🔨"},
+			}}},
+		},
+
+		Embeds: []*discordgo.MessageEmbed{
+			{
+				Type:        discordgo.EmbedTypeRich,
+				Title:       titleText,
+				Color:       0xDE3163,
+				Description: description,
+			},
+		},
+	}
+	_, err = Discord.session.ChannelMessageSendComplex(channel.ID, message)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send private message with embed to user with ID: %s", userID)
+		return fmt.Errorf("failed to send private message with embed to user with ID: %s: %w", userID, err)
 	}
 	Discord.logger.WithFields(log.Fields{
-		"author":        message.Author,
-		"channelID":     message.ChannelID,
-		"message":       message.Content,
-		"messageID":     message.ID,
-		"messageEmbeds": message.Embeds,
-		"dateTime":      time.Now().String(),
-	})
-	return message, nil
+		"channelID": userID,
+	}).Info("Sent DM")
+	return nil
+}
+
+func (Discord *DiscordImpl) GetAllGuildMembers() ([]UserRoles, error) {
+	temp := make([]*discordgo.Member, 0)
+	userRoles := make([]UserRoles, 0)
+	latestMember := "0"
+	for {
+		// Make a call to GuildMembers
+		gm, err := Discord.session.GuildMembers(Discord.guildID, latestMember, 1000)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get guild members from guild with ID: %s", Discord.guildID)
+		}
+		// Append the result of the call to GuildMembers to out
+		temp = append(temp, gm...)
+		// Check to see if the call to guild members is less than 1000
+		if len(gm) < 1000 {
+			break
+		}
+		latestMember = gm[999].User.ID
+	}
+	for _, v := range temp {
+		userRoles = append(userRoles, UserRoles{UserID: v.User.ID, Roles: v.Roles})
+	}
+	return userRoles, nil
+
 }
 
 type DiscordImpl struct {
@@ -93,7 +139,7 @@ type DiscordImpl struct {
 	session               *discordgo.Session
 	embedReactionCallback func()
 	panicAlertCallback    func(message string)
-	panicBanCallback      func()
+	panicBanCallback      func(userID, targetUserID, reason string)
 }
 
 type DiscordImplArgs struct {
@@ -104,7 +150,7 @@ type DiscordImplArgs struct {
 	Session               *discordgo.Session
 	EmbedReactionCallback func()
 	PanicAlertCallback    func(message string)
-	PanicBanCallback      func()
+	PanicBanCallback      func(userID, targetUserID, reason string)
 }
 
 var _ Discord = (*DiscordImpl)(nil)
@@ -193,7 +239,8 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Step 1: Figure out which one of the three interactions just happened.
 	switch i.Interaction.Type {
-	case 2:
+	case discordgo.InteractionApplicationCommand:
+		slashCommandData := i.ApplicationCommandData()
 		if i.ApplicationCommandData().Name == "panicalert" {
 			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -208,6 +255,7 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 				s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
 					Content: "Something went wrong 😱",
 				})
+				return
 			}
 			Discord.panicAlertCallback("A panic alert has started")
 		}
@@ -215,7 +263,7 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "🚨A Panic Ban vote has started! Voters check your DMs. This message will self-destruct in five seconds.🚨",
+					Content: "🚨A Panic Ban vote has started! Voters check your DMs. This message will self-destruct in one second.🚨",
 				},
 			})
 			if err != nil {
@@ -224,14 +272,14 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 				})
 				return
 			}
-			time.AfterFunc(time.Second*5, func() {
+			time.AfterFunc(time.Second*1, func() {
 				s.InteractionResponseDelete(i.Interaction)
 			})
-			Discord.panicBanCallback()
+			Discord.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string))
 		}
 	// This makes the assumption that an InteractionMessageComponent event is fired whenever an embedded button is clicked on.
 	// Because a button is a component of a message.
-	case 3:
+	case discordgo.InteractionMessageComponent:
 		Discord.embedReactionCallback()
 	}
 	// Step 2: Pull the data from the interaction that we care about(going to depend on which interaction)
@@ -275,12 +323,12 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 					Description: "Reason why this user should be banned.",
 					Required:    true,
 				},
-				{
-					Type:        discordgo.ApplicationCommandOptionInteger,
-					Name:        "days",
-					Description: "The number of days of previous messages to delete",
-					Required:    false,
-				},
+				// {
+				// 	Type:        discordgo.ApplicationCommandOptionInteger,
+				// 	Name:        "days",
+				// 	Description: "The number of days of previous messages to delete",
+				// 	Required:    false,
+				// },
 			},
 		},
 	}
