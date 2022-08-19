@@ -9,7 +9,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/streemtech/panicbot"
 	"github.com/streemtech/panicbot/internal/slice"
-	"github.com/twilio/twilio-go"
 	"sigs.k8s.io/yaml"
 )
 
@@ -48,10 +47,10 @@ type ContactOnVote struct {
 }
 
 type Container struct {
-	Config           Config
-	Logger           *log.Logger
-	Discord          panicbot.Discord
-	TwilioRestClient *twilio.RestClient
+	Config  Config
+	Logger  *log.Logger
+	Discord panicbot.Discord
+	Twilio  panicbot.Twilio
 }
 
 type Email struct {
