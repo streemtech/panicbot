@@ -43,7 +43,7 @@ type DiscordImpl struct {
 	session               *discordgo.Session
 	embedReactionCallback func()
 	panicAlertCallback    func(message string)
-	panicBanCallback      func(userID, targetUserID, reason string)
+	panicBanCallback      func(userID, targetUserID, reason string, days int)
 }
 
 type DiscordImplArgs struct {
@@ -55,7 +55,7 @@ type DiscordImplArgs struct {
 	Session               *discordgo.Session
 	EmbedReactionCallback func()
 	PanicAlertCallback    func(message string)
-	PanicBanCallback      func(userID, targetUserID, reason string)
+	PanicBanCallback      func(userID, targetUserID, reason string, days int)
 }
 
 var _ Discord = (*DiscordImpl)(nil)
@@ -289,9 +289,7 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 					},
 				})
 				if err != nil {
-					s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-						Content: "Something went wrong 😱",
-					})
+					Discord.logger.Errorf("failed to respond to application command: %s", err.Error())
 					return
 				}
 				Discord.panicAlertCallback("A panic alert has started")
@@ -309,15 +307,13 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 					},
 				})
 				if err != nil {
-					s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-						Content: "Something went wrong 😱",
-					})
+					Discord.logger.Errorf("failed to respond to application command: %s", err.Error())
 					return
 				}
 				time.AfterFunc(time.Second*1, func() {
 					s.InteractionResponseDelete(i.Interaction)
 				})
-				Discord.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string))
+				Discord.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string), slashCommandData.Options[2].Value.(int))
 			}
 		}
 	// This makes the assumption that an InteractionMessageComponent event is fired whenever an embedded button is clicked on.
@@ -366,12 +362,12 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 					Description: "Reason why this user should be banned.",
 					Required:    true,
 				},
-				// {
-				// 	Type:        discordgo.ApplicationCommandOptionInteger,
-				// 	Name:        "days",
-				// 	Description: "The number of days of previous messages to delete",
-				// 	Required:    false,
-				// },
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "days",
+					Description: "The number of days of previous messages to delete",
+					Required:    false,
+				},
 			},
 		},
 	}

@@ -125,7 +125,7 @@ func (c *Container) PanicAlertCallback(message string) {
 	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
 }
 
-func (c *Container) PanicBanCallback(userID, targetUserID, reason string) {
+func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days int) {
 	// TODO write logic for starting a panicban vote
 	content := fmt.Sprintf("User <@%s> has triggered a Panic Ban vote against User <@%s>", userID, targetUserID)
 	description := fmt.Sprintf("**Reason:** %s\n\n**Action Needed:** Click the Ban User button to cast your vote.\n\n**Ignore this message if you do not want to vote.**", reason)
