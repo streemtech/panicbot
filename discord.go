@@ -292,7 +292,7 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 					Discord.logger.Errorf("failed to respond to application command: %s", err.Error())
 					return
 				}
-				Discord.panicAlertCallback("A panic alert has started")
+				Discord.panicAlertCallback(i.ApplicationCommandData().Options[0].Value.(string))
 			}
 		}
 		if i.ApplicationCommandData().Name == "panicban" {
