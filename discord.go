@@ -13,7 +13,7 @@ import (
 )
 
 type Discord interface {
-	BanUser(userID string, reason string, days float64) (discordgo.GuildBan, error)
+	BanUser(userID string, reason string, days int) (discordgo.GuildBan, error)
 	SendChannelMessage(channelID string, message string) (*discordgo.Message, error)
 	SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID string) error
 	SendDM(userID string, message string) error
@@ -60,9 +60,9 @@ type DiscordImplArgs struct {
 
 var _ Discord = (*DiscordImpl)(nil)
 
-func (Discord *DiscordImpl) BanUser(userID string, reason string, days float64) (discordgo.GuildBan, error) {
+func (Discord *DiscordImpl) BanUser(userID string, reason string, days int) (discordgo.GuildBan, error) {
 
-	err := Discord.session.GuildBanCreateWithReason(Discord.guildID, userID, reason, int(days))
+	err := Discord.session.GuildBanCreateWithReason(Discord.guildID, userID, reason, days)
 	if err != nil {
 		return discordgo.GuildBan{}, fmt.Errorf("failed to ban user with userID:  %s", userID)
 	}
