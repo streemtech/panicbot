@@ -110,7 +110,7 @@ type Voting struct {
 
 func (c *Container) SendText(message string) {
 	for _, phoneNumber := range c.Config.Voting.ContactOnVote.Twilio.PhoneNumbers {
-		c.Twilio.SendMessage(phoneNumber, c.Config.AlertingMethods.Twilio.TwilioPhoneNumber, message)
+		c.Twilio.SendMessage(phoneNumber, message)
 	}
 }
 
