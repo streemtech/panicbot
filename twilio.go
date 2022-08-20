@@ -50,6 +50,10 @@ func NewTwilio(args *TwilioImplArgs) (*TwilioImpl, error) {
 		return nil, fmt.Errorf("AccountSID cannot be empty. Did you forget to set it in the config?")
 	}
 
+	if args.AuthToken == "" {
+		return nil, fmt.Errorf("AuthToken cannot be empty. Did you forget to set it in the config?")
+	}
+
 	if args.TwilioPhoneNumber == "" {
 		return nil, fmt.Errorf("TwilioPhoneNumber cannot be empty. Did you forget to set it in the config?")
 	}
