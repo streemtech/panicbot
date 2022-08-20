@@ -230,6 +230,8 @@ func main() {
 	c.Discord.SendChannelMessage("", "So long!")
 }
 
+var votingRole string
+
 //TODO make a handler for roleRemoved
 func (c *Container) roleRemovedCallback(user string, role string) {
 	//Call this if a role was detected being removed from a user
