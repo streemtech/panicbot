@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -11,6 +12,9 @@ import (
 	"github.com/streemtech/panicbot/internal/slice"
 	"sigs.k8s.io/yaml"
 )
+
+const PANIC_BAN_VOTE_TYPE = "panicban"
+const PANIC_ALERT_VOTE_TYPE = "panicalert"
 
 // TODO: Change debug logs to info.
 
@@ -47,10 +51,11 @@ type ContactOnVote struct {
 }
 
 type Container struct {
-	Config  Config
-	Logger  *log.Logger
-	Discord panicbot.Discord
-	Twilio  panicbot.Twilio
+	Config      Config
+	Logger      *log.Logger
+	Discord     panicbot.Discord
+	Twilio      panicbot.Twilio
+	VoteTracker map[string]VoteData
 }
 
 type Email struct {
@@ -108,6 +113,18 @@ type Voting struct {
 	RateLimit     RateLimit
 }
 
+type VoteData struct {
+	AlertMessage string
+	CallingUser  string
+	PanicType    string
+	Voters       map[string]bool
+
+	// Optional, only for Ban
+	Days       float64
+	BanReason  string
+	TargetUser string
+}
+
 func (c *Container) SendText(message string) {
 	for _, phoneNumber := range c.Config.Voting.ContactOnVote.Twilio.PhoneNumbers {
 		c.Twilio.SendMessage(phoneNumber, message)
@@ -119,7 +136,7 @@ func (c *Container) PanicAlertCallback(message string) {
 	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
 	allUsers, err := c.Discord.GetAllGuildMembers()
 	if err != nil {
-		c.Logger.Errorf("failed to get all guild members")
+		c.Logger.Errorf("failed to get all guild members: %s", err.Error())
 	}
 	for _, v := range allUsers {
 		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
@@ -138,28 +155,110 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 	titleText := "🚨 Panic Ban Vote 🚨"
 	buttonLabel := "Ban User"
 	buttonID := uuid.New().String()
+
+	c.VoteTracker[buttonID] = VoteData{
+		CallingUser: userID,
+		PanicType:   PANIC_BAN_VOTE_TYPE,
+		Days:        days,
+		BanReason:   reason,
+		TargetUser:  targetUserID,
+	}
 	allUsers, err := c.Discord.GetAllGuildMembers()
 	if err != nil {
-		c.Logger.Errorf("failed to get all guild members")
+		c.Logger.Errorf("failed to get all guild members: %s", err.Error())
 	}
 	for _, v := range allUsers {
 		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicBan.Users, c.Config.Voting.AllowedToVote.PanicBan.Roles) {
 			err := c.Discord.SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID)
 			if err != nil {
-				c.Logger.Errorf("failed to send embeded direct message: %s", err.Error())
+				c.Logger.Errorf("failed to send embedded direct message: %s", err.Error())
 			}
 		}
 	}
-	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
-	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
-	// TODO if enough votes then call BanUser method
-	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
+
+	voteTime, err := time.ParseDuration(c.Config.Voting.VoteTimers.PanicBanVoteTimer)
+	if err != nil {
+		c.Logger.Errorf("failed to parse ban vote duration: %s ,setting to default time of five minutes", err.Error())
+		voteTime = time.Minute * 5
+	}
+	go time.AfterFunc(voteTime, func() {
+		voteData, ok := c.VoteTracker[buttonID]
+		if !ok {
+			return
+		}
+		// Remove the vote from VoteTracker. The vote failed(Not enough people voted to ban.)
+		delete(c.VoteTracker, buttonID)
+
+		member, err := c.Discord.GetGuildMemberUsername(voteData.TargetUser)
+		if err != nil {
+			c.Logger.Errorf("failed to get GuildMember: %s", err.Error())
+		}
+		// Send message saying that the vote failed.
+		c.Discord.SendChannelMessage("", fmt.Sprintf("Vote to ban user %s has failed. Time elapsed and not enough votes received", member))
+	})
 }
 
-func (c *Container) EmbedReactionCallback() {
-	c.Logger.Info("Called!")
+func (c *Container) EmbedReactionCallback(userID, buttonID string) {
 	// TODO use this for whenever we recieve a reaction to a panicalert / panicban
 	// This function will be used to tally up the votes and then take action.
+	voteData, ok := c.VoteTracker[buttonID]
+	if !ok {
+		err := c.Discord.SendDM(userID, "Sorry, this vote has ended")
+		if err != nil {
+			c.Logger.Errorf("could not notify the user that the vote ended: %s", err.Error())
+		}
+		return
+	}
+	switch voteData.PanicType {
+	case PANIC_ALERT_VOTE_TYPE:
+		// TODO: Panic Alert stuff here when they click the button
+	case PANIC_BAN_VOTE_TYPE:
+		// Check to see if the voter is already in the voters array.
+		_, ok := voteData.Voters[userID]
+		if ok {
+			err := c.Discord.SendDM(userID, "Sorry, you have already participated in this vote")
+			if err != nil {
+				c.Logger.Errorf("failed to send DM: %s", err.Error())
+			}
+			return
+		}
+		// Add the user to the Voters array and let them know their vote has been counted
+		voteData.Voters[userID] = true
+		err := c.Discord.SendDM(userID, "Thank you! Your vote has been recorded.")
+		if err != nil {
+			c.Logger.Errorf("failed to send DM: %s", err.Error())
+		}
+		if len(voteData.Voters) < c.Config.Voting.RequiredVotes.PanicBan {
+			return
+		}
+		// Delete the vote tracking
+		bannedUser, err := c.Discord.GetGuildMemberUsername(voteData.TargetUser)
+		if err != nil {
+			c.Logger.Errorf("could not find guild member's username %s", err.Error())
+		}
+		err = c.Discord.BanUser(voteData.TargetUser, voteData.BanReason, int(voteData.Days))
+		if err != nil {
+			c.Logger.Errorf("failed to ban user: %s", err.Error())
+			return
+		}
+		err = c.Alert("")
+		if err != nil {
+			c.Logger.Errorf("failed to alert the authorities: %s", err.Error())
+		}
+		err = c.Discord.SendChannelMessage("", fmt.Sprintf("User %s has been banned. Crisis averted.", bannedUser))
+		if err != nil {
+			c.Logger.Errorf("failed to notify channel of vote result: %s", err.Error())
+		}
+		delete(c.VoteTracker, buttonID)
+	default:
+		c.Logger.Errorf("Unknown panic vote type %s", voteData.PanicType)
+	}
+}
+func (c *Container) Alert(message string) error {
+	// TODO Send any DMs that need to be sent out
+	// TODO Send any Emails that need to be sent out
+	// TODO Send any Texts that need to be sent out
+	return nil
 }
 
 func hasVotePermissions(userID string, userRoles []string, allowedUserIDs []string, allowedUserRoles []string) bool {
@@ -176,6 +275,7 @@ func hasVotePermissions(userID string, userRoles []string, allowedUserIDs []stri
 
 func main() {
 	c := new(Container)
+	c.VoteTracker = make(map[string]VoteData)
 	c.configureLogger()
 	err := c.configChanged(true)
 	if err != nil {
@@ -228,6 +328,7 @@ func main() {
 
 	c.Logger.Infof("Gracefully shutting down.")
 	c.Discord.SendChannelMessage("", "So long!")
+
 }
 
 func (c *Container) configChanged(load bool) error {
