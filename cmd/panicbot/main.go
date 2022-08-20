@@ -5,10 +5,10 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/k0kubun/pp/v3"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/streemtech/panicbot"
-	"github.com/twilio/twilio-go"
+	"github.com/streemtech/panicbot/internal/slice"
 	"sigs.k8s.io/yaml"
 )
 
@@ -47,10 +47,10 @@ type ContactOnVote struct {
 }
 
 type Container struct {
-	Config           Config
-	Logger           *log.Logger
-	Discord          panicbot.Discord
-	TwilioRestClient *twilio.RestClient
+	Config  Config
+	Logger  *log.Logger
+	Discord panicbot.Discord
+	Twilio  panicbot.Twilio
 }
 
 type Email struct {
@@ -110,9 +110,13 @@ type Voting struct {
 func (c *Container) PanicAlertCallback(message string) {
 	// TODO write logic for starting a panicalert vote
 	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
-	if true {
-		for _, userID := range c.Config.Voting.ContactOnVote.Discord.Users {
-			c.Discord.SendDM(userID, message)
+	allUsers, err := c.Discord.GetAllGuildMembers()
+	if err != nil {
+		c.Logger.Errorf("failed to get all guild members")
+	}
+	for _, v := range allUsers {
+		if compareVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
+			c.Discord.SendDM(v.UserID, message)
 		}
 	}
 	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
@@ -120,9 +124,25 @@ func (c *Container) PanicAlertCallback(message string) {
 	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
 }
 
-func (c *Container) PanicBanCallback() {
+func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days int) {
 	// TODO write logic for starting a panicban vote
-	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
+	content := fmt.Sprintf("User <@%s> has triggered a Panic Ban vote against User <@%s>", userID, targetUserID)
+	description := fmt.Sprintf("**Reason:** %s\n\n**Action Needed:** Click the Ban User button to cast your vote.\n\n**Ignore this message if you do not want to vote.**", reason)
+	titleText := "🚨 Panic Ban Vote 🚨"
+	buttonLabel := "Ban User"
+	buttonID := uuid.New().String()
+	allUsers, err := c.Discord.GetAllGuildMembers()
+	if err != nil {
+		c.Logger.Errorf("failed to get all guild members")
+	}
+	for _, v := range allUsers {
+		if compareVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
+			err := c.Discord.SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID)
+			if err != nil {
+				c.Logger.Errorf("failed to send embeded direct message: %s", err.Error())
+			}
+		}
+	}
 	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
 	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
 	// TODO if enough votes then call BanUser method
@@ -130,9 +150,23 @@ func (c *Container) PanicBanCallback() {
 }
 
 func (c *Container) EmbedReactionCallback() {
+	c.Logger.Info("Called!")
 	// TODO use this for whenever we recieve a reaction to a panicalert / panicban
 	// This function will be used to tally up the votes and then take action.
 }
+
+func compareVotePermissions(userID string, userRoles []string, allowedUserIDs []string, allowedUserRoles []string) bool {
+	if slice.Contains(allowedUserIDs, userID) {
+		return true
+	}
+	for _, userRole := range userRoles {
+		if slice.Contains(allowedUserRoles, userRole) {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	c := new(Container)
 	c.configureLogger()
@@ -166,7 +200,7 @@ func main() {
 	// Without the session I can't call Close()
 	// defer c.Discord.Close()
 
-	pp.Println(c.Config)
+	// pp.Println(c.Config)
 
 	c.Logger.Debugf("create channel to listen for os interrupt")
 	stop := make(chan os.Signal, 1)
