@@ -13,7 +13,7 @@ import (
 )
 
 type Discord interface {
-	BanUser(userID string, reason string, days int) (discordgo.GuildBan, error)
+	BanUser(userID string, reason string, days float64) (discordgo.GuildBan, error)
 	SendChannelMessage(channelID string, message string) (*discordgo.Message, error)
 	SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID string) error
 	SendDM(userID string, message string) error
@@ -43,7 +43,7 @@ type DiscordImpl struct {
 	session               *discordgo.Session
 	embedReactionCallback func()
 	panicAlertCallback    func(message string)
-	panicBanCallback      func(userID, targetUserID, reason string, days int)
+	panicBanCallback      func(userID, targetUserID, reason string, days float64)
 }
 
 type DiscordImplArgs struct {
@@ -55,14 +55,14 @@ type DiscordImplArgs struct {
 	Session               *discordgo.Session
 	EmbedReactionCallback func()
 	PanicAlertCallback    func(message string)
-	PanicBanCallback      func(userID, targetUserID, reason string, days int)
+	PanicBanCallback      func(userID, targetUserID, reason string, days float64)
 }
 
 var _ Discord = (*DiscordImpl)(nil)
 
-func (Discord *DiscordImpl) BanUser(userID string, reason string, days int) (discordgo.GuildBan, error) {
+func (Discord *DiscordImpl) BanUser(userID string, reason string, days float64) (discordgo.GuildBan, error) {
 
-	err := Discord.session.GuildBanCreateWithReason(Discord.guildID, userID, reason, days)
+	err := Discord.session.GuildBanCreateWithReason(Discord.guildID, userID, reason, int(days))
 	if err != nil {
 		return discordgo.GuildBan{}, fmt.Errorf("failed to ban user with userID:  %s", userID)
 	}
@@ -313,7 +313,7 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 				time.AfterFunc(time.Second*1, func() {
 					s.InteractionResponseDelete(i.Interaction)
 				})
-				Discord.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string), slashCommandData.Options[2].Value.(int))
+				Discord.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string), slashCommandData.Options[2].Value.(float64))
 			}
 		}
 	// This makes the assumption that an InteractionMessageComponent event is fired whenever an embedded button is clicked on.
