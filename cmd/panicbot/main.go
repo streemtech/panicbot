@@ -122,7 +122,7 @@ func (c *Container) PanicAlertCallback(message string) {
 		c.Logger.Errorf("failed to get all guild members")
 	}
 	for _, v := range allUsers {
-		if compareVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
+		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
 			c.Discord.SendDM(v.UserID, message)
 		}
 	}
@@ -143,7 +143,7 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 		c.Logger.Errorf("failed to get all guild members")
 	}
 	for _, v := range allUsers {
-		if compareVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
+		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicBan.Users, c.Config.Voting.AllowedToVote.PanicBan.Roles) {
 			err := c.Discord.SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID)
 			if err != nil {
 				c.Logger.Errorf("failed to send embeded direct message: %s", err.Error())
@@ -162,7 +162,7 @@ func (c *Container) EmbedReactionCallback() {
 	// This function will be used to tally up the votes and then take action.
 }
 
-func compareVotePermissions(userID string, userRoles []string, allowedUserIDs []string, allowedUserRoles []string) bool {
+func hasVotePermissions(userID string, userRoles []string, allowedUserIDs []string, allowedUserRoles []string) bool {
 	if slice.Contains(allowedUserIDs, userID) {
 		return true
 	}
