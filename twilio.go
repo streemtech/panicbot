@@ -9,7 +9,7 @@ import (
 )
 
 type Twilio interface {
-	SendMessage(toNumber, fromNumber, body string) error
+	SendMessage(toNumber, body string) error
 }
 type TwilioImpl struct {
 	accountSID        string
@@ -30,19 +30,19 @@ type TwilioImplArgs struct {
 
 var _ Twilio = (*TwilioImpl)(nil)
 
-func (Twilio *TwilioImpl) SendMessage(toNumber, fromNumber, body string) error {
+func (Twilio *TwilioImpl) SendMessage(toNumber, body string) error {
 	params := &api.CreateMessageParams{}
 	params.SetTo(toNumber)
-	params.SetFrom(fromNumber)
+	params.SetFrom(Twilio.twilioPhoneNumber)
 	params.SetBody(body)
 
 	resp, err := Twilio.client.Api.CreateMessage(params)
 	if err != nil {
 		Twilio.logger.Errorf("Error: %s", err.Error())
-		return fmt.Errorf("failed to send message: %s from %s to %s", body, fromNumber, toNumber)
+		return fmt.Errorf("failed to send message: %s from %s to %s", body, Twilio.twilioPhoneNumber, toNumber)
 	}
 
-	Twilio.logger.Info("Message Sid: " + *resp.Sid)
+	Twilio.logger.Debugf("Message Sid: %s", *resp.Sid)
 	return nil
 }
 func NewTwilio(args *TwilioImplArgs) (*TwilioImpl, error) {
