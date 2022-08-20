@@ -178,6 +178,18 @@ func main() {
 	c.Discord.SendChannelMessage("", "So long!")
 }
 
+//TODO make a handler for roleRemoved
+func (c *Container) roleRemovedCallback(user string, role string) {
+	//Call this if a role was detected being removed from a user
+	// also define voting role in the detection stuff
+	if role != votingRole {
+		//do nothing, business as usual, otherwise...
+	} else {
+		//add user to map as true, maybe later auto-remove if false/timer makes it false?
+		tempVote := make(map[string]bool)
+		tempVote[user] = true
+	}
+}
 func (c *Container) configChanged(load bool) error {
 	configFile := os.Getenv("CONFIG")
 	if configFile == "" {
