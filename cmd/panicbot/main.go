@@ -199,8 +199,6 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 }
 
 func (c *Container) EmbedReactionCallback(userID, buttonID string) {
-	// TODO use this for whenever we recieve a reaction to a panicalert / panicban
-	// This function will be used to tally up the votes and then take action.
 	voteData, ok := c.VoteTracker[buttonID]
 	if !ok {
 		err := c.Discord.SendDM(userID, "Sorry, this vote has ended")
