@@ -13,7 +13,6 @@ import (
 )
 
 type Discord interface {
-	//TODO verify if return values can be simplified
 	BanUser(userID string, reason string, days int) error
 	SendChannelMessage(channelID string, message string) error
 	SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID string) error
@@ -177,7 +176,7 @@ func (Discord *DiscordImpl) GetGuildMemberUsername(userID string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to get member username with ID: %s in guild with ID: %s", userID, Discord.guildID)
 	}
-	return fmt.Sprintf("%s", member.User.Username+member.User.Discriminator), nil
+	return fmt.Sprintf(member.User.Username + member.User.Discriminator), nil
 }
 
 func handlePermissionsBadRequest(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -245,7 +244,7 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 	if discordImpl.primaryChannelID == "" {
 		primaryChannel, err := discordImpl.findPrimaryChannelInGuild()
 		if err != nil {
-			return nil, fmt.Errorf("failed to determine primary channel in guild: %s", err)
+			return nil, fmt.Errorf("failed to determine primary channel in guild: %w", err)
 		}
 		discordImpl.primaryChannelID = primaryChannel
 	}
@@ -257,7 +256,7 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 	discordImpl.session.Open()
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to open websocket connection to Discord: %s", err)
+		return nil, fmt.Errorf("failed to open websocket connection to Discord: %w", err)
 	}
 
 	discordImpl.logger.Infof("successfully opened websocket connection to Discord")
@@ -272,12 +271,12 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 
 	err = discordImpl.registerSlashCommands()
 	if err != nil {
-		return nil, fmt.Errorf("failed to register slash commands: %s", err)
+		return nil, fmt.Errorf("failed to register slash commands: %w", err)
 	}
 
 	err = discordImpl.SendChannelMessage(discordImpl.primaryChannelID, "Hello! Thank you for inviting me!")
 	if err != nil {
-		return nil, fmt.Errorf("failed to send welcome message")
+		return nil, fmt.Errorf("failed to send welcome message: %w", err)
 	}
 	discordImpl.logger.Infof("successfully sent welcome message")
 
@@ -301,7 +300,7 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 					},
 				})
 				if err != nil {
-					Discord.logger.Errorf("failed to respond to application command: %s", err.Error())
+					Discord.logger.Errorf("failed to respond to application command: %w", err)
 					return
 				}
 				Discord.panicAlertCallback(i.ApplicationCommandData().Options[0].Value.(string))
@@ -319,7 +318,7 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 					},
 				})
 				if err != nil {
-					Discord.logger.Errorf("failed to respond to application command: %s", err.Error())
+					Discord.logger.Errorf("failed to respond to application command: %w", err)
 					return
 				}
 				time.AfterFunc(time.Second*1, func() {
@@ -400,19 +399,19 @@ func (Discord *DiscordImpl) findPrimaryChannelInGuild() (string, error) {
 	if Discord.primaryChannelID != "" {
 		channel, err := Discord.session.Channel(Discord.primaryChannelID)
 		if err != nil {
-			return "", fmt.Errorf("failed to find channel with provided identifier. Is primaryChannelID a valid Discord channelID?: %s", err)
+			return "", fmt.Errorf("failed to find channel with provided identifier. Is primaryChannelID a valid Discord channelID?: %w", err)
 		}
 		return channel.ID, nil
 	}
 
 	guild, err := Discord.session.Guild(Discord.guildID)
 	if err != nil {
-		return "", fmt.Errorf("failed to find guild with provided identifier. Did you forget to put the GuildID in the config?: %s", err)
+		return "", fmt.Errorf("failed to find guild with provided identifier. Did you forget to put the GuildID in the config?: %w", err)
 	}
 
 	channels, err := Discord.session.GuildChannels(Discord.guildID)
 	if err != nil {
-		return "", fmt.Errorf("failed to find channels in the guild")
+		return "", fmt.Errorf("failed to find channels in the guild: %w", err)
 	}
 
 	for _, guildChannel := range channels {
