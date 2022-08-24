@@ -44,6 +44,7 @@ type DiscordImpl struct {
 	embedReactionCallback func()
 	panicAlertCallback    func(message string)
 	panicBanCallback      func(userID, targetUserID, reason string, days float64)
+	roleRemovedCallback   func(user, role string)
 }
 
 type DiscordImplArgs struct {
@@ -56,6 +57,7 @@ type DiscordImplArgs struct {
 	EmbedReactionCallback func()
 	PanicAlertCallback    func(message string)
 	PanicBanCallback      func(userID, targetUserID, reason string, days float64)
+	RoleRemovedCallback   func(user, role string)
 }
 
 var _ Discord = (*DiscordImpl)(nil)
@@ -227,6 +229,7 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 		embedReactionCallback: args.EmbedReactionCallback,
 		panicAlertCallback:    args.PanicAlertCallback,
 		panicBanCallback:      args.PanicBanCallback,
+		roleRemovedCallback:   args.RoleRemovedCallback,
 		session:               session,
 	}
 

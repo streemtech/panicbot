@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -162,6 +163,17 @@ func (c *Container) EmbedReactionCallback() {
 	// This function will be used to tally up the votes and then take action.
 }
 
+func (c *Container) RoleRemovedCallback(user string, role string) {
+	if role != votingRole {
+		return
+	} else {
+		tempVote := make(map[string]bool)
+		tempVote[user] = true
+		time.AfterFunc(time.Minute*30, func(){
+			tempVote = nil
+		})
+	}
+}
 func hasVotePermissions(userID string, userRoles []string, allowedUserIDs []string, allowedUserRoles []string) bool {
 	if slice.Contains(allowedUserIDs, userID) {
 		return true
@@ -194,6 +206,7 @@ func main() {
 		EmbedReactionCallback: c.EmbedReactionCallback,
 		PanicAlertCallback:    c.PanicAlertCallback,
 		PanicBanCallback:      c.PanicBanCallback,
+		RoleRemovedCallback    c.RoleRemovedCallback
 	})
 
 	if err != nil {
@@ -230,20 +243,6 @@ func main() {
 	c.Discord.SendChannelMessage("", "So long!")
 }
 
-var votingRole string
-
-//TODO make a handler for roleRemoved
-func (c *Container) roleRemovedCallback(user string, role string) {
-	//Call this if a role was detected being removed from a user
-	// also define voting role in the detection stuff
-	if role != votingRole {
-		//do nothing, business as usual, otherwise...
-	} else {
-		//add user to map as true, maybe later auto-remove if false/timer makes it false?
-		tempVote := make(map[string]bool)
-		tempVote[user] = true
-	}
-}
 func (c *Container) configChanged(load bool) error {
 	configFile := os.Getenv("CONFIG")
 	if configFile == "" {
