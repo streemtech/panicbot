@@ -102,10 +102,27 @@ func (Discord *DiscordImpl) SendChannelMessage(channelID string, content string)
 }
 
 func (Discord *DiscordImpl) SendDM(userID string, message string) error {
-	err := Discord.SendChannelMessage(userID, message)
+	channel, err := Discord.session.UserChannelCreate(userID)
 	if err != nil {
-		return fmt.Errorf("failed to send direct message to user with ID: %s", userID)
+		return fmt.Errorf("failed to create private message channel with userID: %s", userID)
 	}
+	m := &discordgo.MessageSend{
+		Content: message,
+	}
+
+	_, err = Discord.session.ChannelMessageSendComplex(channel.ID, m)
+	if err != nil {
+		return fmt.Errorf("failed to send private message with embed to user with ID: %s: %w", userID, err)
+	}
+	Discord.logger.WithFields(log.Fields{
+		"channelID": userID,
+	}).Info("Sent DM")
+	return nil
+
+	// err := Discord.SendChannelMessage(channelId, message)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to send direct message to user with ID: %s", userID)
+	// }
 	return nil
 }
 
@@ -176,7 +193,7 @@ func (Discord *DiscordImpl) GetGuildMemberUsername(userID string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to get member username with ID: %s in guild with ID: %s", userID, Discord.guildID)
 	}
-	return fmt.Sprintf(member.User.Username + member.User.Discriminator), nil
+	return fmt.Sprintf("%s#%s", member.User.Username, member.User.Discriminator), nil
 }
 
 func handlePermissionsBadRequest(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -330,7 +347,16 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 	// This makes the assumption that an InteractionMessageComponent event is fired whenever an embedded button is clicked on.
 	// Because a button is a component of a message.
 	case discordgo.InteractionMessageComponent:
-		Discord.embedReactionCallback(i.Interaction.Member.User.ID, "")
+		dat, ok := i.Interaction.Data.(discordgo.MessageComponentInteractionData)
+		if !ok {
+			Discord.logger.Errorf("Interaction Data of unexpected type, %T", i.Interaction.Data)
+			break
+		}
+		if i.Interaction.User == nil {
+			Discord.logger.Errorf("Unable to get user from interaction")
+			break
+		}
+		Discord.embedReactionCallback(i.Interaction.User.ID, dat.CustomID)
 	}
 	// Step 2: Pull the data from the interaction that we care about(going to depend on which interaction)
 	// Step 3: Pass that information to the matching callback.
