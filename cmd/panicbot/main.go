@@ -154,9 +154,10 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 	description := fmt.Sprintf("**Reason:** %s\n\n**Action Needed:** Click the Ban User button to cast your vote.\n\n**Ignore this message if you do not want to vote.**", reason)
 	titleText := "🚨 Panic Ban Vote 🚨"
 	buttonLabel := "Ban User"
-	buttonID := uuid.New().String()
+	voteID := uuid.New().String()
 
-	c.VoteTracker[buttonID] = VoteData{
+	c.VoteTracker[voteID] = VoteData{
+		Voters:      make(map[string]bool),
 		CallingUser: userID,
 		PanicType:   PANIC_BAN_VOTE_TYPE,
 		Days:        days,
@@ -169,7 +170,7 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 	}
 	for _, v := range allUsers {
 		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicBan.Users, c.Config.Voting.AllowedToVote.PanicBan.Roles) {
-			err := c.Discord.SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID)
+			err := c.Discord.SendDMEmbed(userID, content, description, titleText, buttonLabel, voteID)
 			if err != nil {
 				c.Logger.Errorf("failed to send embedded direct message: %s", err.Error())
 			}
@@ -182,12 +183,12 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 		voteTime = time.Minute * 5
 	}
 	go time.AfterFunc(voteTime, func() {
-		voteData, ok := c.VoteTracker[buttonID]
+		voteData, ok := c.VoteTracker[voteID]
 		if !ok {
 			return
 		}
 		// Remove the vote from VoteTracker. The vote failed(Not enough people voted to ban.)
-		delete(c.VoteTracker, buttonID)
+		delete(c.VoteTracker, voteID)
 
 		member, err := c.Discord.GetGuildMemberUsername(voteData.TargetUser)
 		if err != nil {
@@ -198,8 +199,8 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 	})
 }
 
-func (c *Container) EmbedReactionCallback(userID, buttonID string) {
-	voteData, ok := c.VoteTracker[buttonID]
+func (c *Container) EmbedReactionCallback(userID, voteID string) {
+	voteData, ok := c.VoteTracker[voteID]
 	if !ok {
 		err := c.Discord.SendDM(userID, "Sorry, this vote has ended")
 		if err != nil {
@@ -247,7 +248,7 @@ func (c *Container) EmbedReactionCallback(userID, buttonID string) {
 		if err != nil {
 			c.Logger.Errorf("failed to notify channel of vote result: %s", err.Error())
 		}
-		delete(c.VoteTracker, buttonID)
+		delete(c.VoteTracker, voteID)
 	default:
 		c.Logger.Errorf("Unknown panic vote type %s", voteData.PanicType)
 	}
