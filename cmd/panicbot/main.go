@@ -55,6 +55,7 @@ type Container struct {
 	Logger      *log.Logger
 	Discord     panicbot.Discord
 	Twilio      panicbot.Twilio
+	GracePeriod map[string]time.Time
 	VoteTracker map[string]VoteData
 }
 
@@ -139,7 +140,7 @@ func (c *Container) PanicAlertCallback(message string) {
 		c.Logger.Errorf("failed to get all guild members: %s", err.Error())
 	}
 	for _, v := range allUsers {
-		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
+		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) || c.RoleRemovedCheck(v.UserID) {
 			c.Discord.SendDM(v.UserID, message)
 		}
 	}
@@ -154,6 +155,7 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 	description := fmt.Sprintf("**Reason:** %s\n\n**Action Needed:** Click the Ban User button to cast your vote.\n\n**Ignore this message if you do not want to vote.**", reason)
 	titleText := "🚨 Panic Ban Vote 🚨"
 	buttonLabel := "Ban User"
+
 	voteID := uuid.New().String()
 
 	c.VoteTracker[voteID] = VoteData{
@@ -197,6 +199,24 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 		// Send message saying that the vote failed.
 		c.Discord.SendChannelMessage("", fmt.Sprintf("Vote to ban user %s has failed. Time elapsed and not enough votes received", member))
 	})
+}
+
+func (c *Container) RoleRemovedCallback(user string, role string) {
+	if !hasVotePermissions("", []string{role}, []string{}, c.Config.Voting.AllowedToVote.PanicBan.Roles) {
+		return
+	}
+	t := time.Now()
+	c.GracePeriod[user] = t
+	time.AfterFunc(time.Minute*30, func() {
+		t2 := c.GracePeriod[user]
+		if t == t2 {
+			delete(c.GracePeriod, user)
+		}
+	})
+}
+func (c *Container) RoleRemovedCheck(user string) bool {
+	_, ok := c.GracePeriod[user]
+	return ok
 }
 
 func (c *Container) EmbedReactionCallback(userID, voteID string) {
@@ -293,6 +313,18 @@ func main() {
 		EmbedReactionCallback: c.EmbedReactionCallback,
 		PanicAlertCallback:    c.PanicAlertCallback,
 		PanicBanCallback:      c.PanicBanCallback,
+		RoleRemovedCallback:   c.RoleRemovedCallback,
+	})
+
+	if err != nil {
+		c.Logger.Fatalf("failed to create Discord session: %s", err)
+	}
+	c.Twilio, err = panicbot.NewTwilio(&panicbot.TwilioImplArgs{
+		AccountSID:        c.Config.AlertingMethods.Twilio.AccountSID,
+		APIKey:            c.Config.AlertingMethods.Twilio.APIKey,
+		APISecret:         c.Config.AlertingMethods.Twilio.APISecret,
+		TwilioPhoneNumber: c.Config.AlertingMethods.Twilio.TwilioPhoneNumber,
+		Logger:            c.Logger,
 	})
 
 	if err != nil {

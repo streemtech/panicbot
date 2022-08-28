@@ -45,6 +45,7 @@ type DiscordImpl struct {
 	embedReactionCallback func(userID, buttonID string)
 	panicAlertCallback    func(message string)
 	panicBanCallback      func(userID, targetUserID, reason string, days float64)
+	roleRemovedCallback   func(user, role string)
 }
 
 type DiscordImplArgs struct {
@@ -57,6 +58,7 @@ type DiscordImplArgs struct {
 	EmbedReactionCallback func(userID, buttonID string)
 	PanicAlertCallback    func(message string)
 	PanicBanCallback      func(userID, targetUserID, reason string, days float64)
+	RoleRemovedCallback   func(user, role string)
 }
 
 var _ Discord = (*DiscordImpl)(nil)
@@ -102,27 +104,10 @@ func (Discord *DiscordImpl) SendChannelMessage(channelID string, content string)
 }
 
 func (Discord *DiscordImpl) SendDM(userID string, message string) error {
-	channel, err := Discord.session.UserChannelCreate(userID)
+	err := Discord.SendChannelMessage(userID, message)
 	if err != nil {
-		return fmt.Errorf("failed to create private message channel with userID: %s", userID)
+		return fmt.Errorf("failed to send direct message to user with ID: %s", userID)
 	}
-	m := &discordgo.MessageSend{
-		Content: message,
-	}
-
-	_, err = Discord.session.ChannelMessageSendComplex(channel.ID, m)
-	if err != nil {
-		return fmt.Errorf("failed to send private message with embed to user with ID: %s: %w", userID, err)
-	}
-	Discord.logger.WithFields(log.Fields{
-		"channelID": userID,
-	}).Info("Sent DM")
-	return nil
-
-	// err := Discord.SendChannelMessage(channelId, message)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to send direct message to user with ID: %s", userID)
-	// }
 	return nil
 }
 
@@ -183,6 +168,7 @@ func (Discord *DiscordImpl) GetAllGuildMembers() ([]UserRoles, error) {
 		userRoles = append(userRoles, UserRoles{UserID: v.User.ID, Roles: v.Roles})
 	}
 	return userRoles, nil
+
 }
 
 func (Discord *DiscordImpl) GetGuildMemberUsername(userID string) (string, error) {
@@ -255,6 +241,7 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 		embedReactionCallback: args.EmbedReactionCallback,
 		panicAlertCallback:    args.PanicAlertCallback,
 		panicBanCallback:      args.PanicBanCallback,
+		roleRemovedCallback:   args.RoleRemovedCallback,
 		session:               session,
 	}
 
