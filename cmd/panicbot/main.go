@@ -48,10 +48,11 @@ type ContactOnVote struct {
 }
 
 type Container struct {
-	Config  Config
-	Logger  *log.Logger
-	Discord panicbot.Discord
-	Twilio  panicbot.Twilio
+	Config      Config
+	Logger      *log.Logger
+	Discord     panicbot.Discord
+	Twilio      panicbot.Twilio
+	GracePeriod map[string]time.Time
 }
 
 type Email struct {
@@ -123,7 +124,7 @@ func (c *Container) PanicAlertCallback(message string) {
 		c.Logger.Errorf("failed to get all guild members")
 	}
 	for _, v := range allUsers {
-		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
+		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) || c.RoleRemovedCheck(v.UserID) {
 			c.Discord.SendDM(v.UserID, message)
 		}
 	}
@@ -144,7 +145,7 @@ func (c *Container) PanicBanCallback(userID, targetUserID, reason string, days f
 		c.Logger.Errorf("failed to get all guild members")
 	}
 	for _, v := range allUsers {
-		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicBan.Users, c.Config.Voting.AllowedToVote.PanicBan.Roles) {
+		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicBan.Users, c.Config.Voting.AllowedToVote.PanicBan.Roles) || c.RoleRemovedCheck(v.UserID) {
 			err := c.Discord.SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID)
 			if err != nil {
 				c.Logger.Errorf("failed to send embeded direct message: %s", err.Error())
@@ -162,17 +163,22 @@ func (c *Container) EmbedReactionCallback() {
 	// TODO use this for whenever we recieve a reaction to a panicalert / panicban
 	// This function will be used to tally up the votes and then take action.
 }
-
 func (c *Container) RoleRemovedCallback(user string, role string) {
-	if role != votingRole {
+	if !hasVotePermissions("", []string{role}, []string{}, c.Config.Voting.AllowedToVote.PanicBan.Roles) {
 		return
-	} else {
-		tempVote := make(map[string]bool)
-		tempVote[user] = true
-		time.AfterFunc(time.Minute*30, func(){
-			tempVote = nil
-		})
 	}
+	t := time.Now()
+	c.GracePeriod[user] = t
+	time.AfterFunc(time.Minute*30, func() {
+		t2 := c.GracePeriod[user]
+		if t == t2 {
+			delete(c.GracePeriod, user)
+		}
+	})
+}
+func (c *Container) RoleRemovedCheck(user string) bool {
+	_, ok := c.GracePeriod[user]
+	return ok
 }
 func hasVotePermissions(userID string, userRoles []string, allowedUserIDs []string, allowedUserRoles []string) bool {
 	if slice.Contains(allowedUserIDs, userID) {
@@ -206,7 +212,7 @@ func main() {
 		EmbedReactionCallback: c.EmbedReactionCallback,
 		PanicAlertCallback:    c.PanicAlertCallback,
 		PanicBanCallback:      c.PanicBanCallback,
-		RoleRemovedCallback    c.RoleRemovedCallback
+		RoleRemovedCallback:   c.RoleRemovedCallback,
 	})
 
 	if err != nil {
