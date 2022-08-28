@@ -131,18 +131,43 @@ func (c *Container) SendText(message string) {
 	}
 }
 
-func (c *Container) PanicAlertCallback(message string) {
+func (c *Container) PanicAlertCallback(userID, message string) {
 	// TODO write logic for starting a panicalert vote
 	// TODO if enough votes then call SendDM method passing the information from the config.ContactOnVote {Discord {}} struct
+	content := fmt.Sprintf("User <@%s> has triggered a Panic Alert.", userID)
+	description := fmt.Sprintf("**Reason:** %s\n\n**Action Needed:** Click the Alert button to cast your vote.\n\n**Ignore this message if you do not want to vote.**", message)
+	titleText := "⚠️ Panic Alert Vote ⚠️"
+	buttonLabel := "Alert"
+	voteID := uuid.New().String()
+	c.VoteTracker[voteID] = VoteData{
+		Voters:       make(map[string]bool),
+		CallingUser:  userID,
+		PanicType:    PANIC_ALERT_VOTE_TYPE,
+		AlertMessage: message,
+	}
 	allUsers, err := c.Discord.GetAllGuildMembers()
 	if err != nil {
 		c.Logger.Errorf("failed to get all guild members: %s", err.Error())
 	}
 	for _, v := range allUsers {
 		if hasVotePermissions(v.UserID, v.Roles, c.Config.Voting.AllowedToVote.PanicAlert.Users, c.Config.Voting.AllowedToVote.PanicAlert.Roles) {
-			c.Discord.SendDM(v.UserID, message)
+			err := c.Discord.SendDMEmbed(userID, content, description, titleText, buttonLabel, voteID)
+			if err != nil {
+				c.Logger.Errorf("Failed to send embedded direct message: %s", err.Error())
+			}
 		}
 	}
+	voteTime, err := time.ParseDuration(c.Config.Voting.VoteTimers.PanicAlertVoteTimer)
+	if err != nil {
+		c.Logger.Errorf("failed to parse alert vote duration: %s ,setting to default time of five minutes", err.Error())
+		voteTime = time.Minute * 5
+	}
+	go time.AfterFunc(voteTime, func() {
+		// Remove the vote from VoteTracker. The vote failed(Not enough people voted to alert.)
+		delete(c.VoteTracker, voteID)
+		// Send message saying that the vote failed.
+		c.Discord.SendChannelMessage("", fmt.Sprintf("Panic Alert vote has failed. Time elapsed and not enough votes received"))
+	})
 	// TODO if enough votes then call Twilio API to text/call the number from the config.ContactOnVote {Twilio {}} struct
 	// TODO if enough votes then call Email handler to email the addresses from the config.ContactOnVote {Email {}} struct
 	// TODO write logic for if vote fails. No one is contacted but perhaps a message is sent to the PrimaryChannel. Use SendChannelMessage
