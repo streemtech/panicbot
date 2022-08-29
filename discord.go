@@ -63,19 +63,19 @@ type DiscordImplArgs struct {
 
 var _ Discord = (*DiscordImpl)(nil)
 
-func (Discord *DiscordImpl) BanUser(userID string, reason string, days int) error {
+func (d *DiscordImpl) BanUser(userID string, reason string, days int) error {
 
-	err := Discord.session.GuildBanCreateWithReason(Discord.guildID, userID, reason, days)
+	err := d.session.GuildBanCreateWithReason(d.guildID, userID, reason, days)
 	if err != nil {
 		return fmt.Errorf("failed to ban user with userID:  %s", userID)
 	}
 
-	guildBan, err := Discord.session.GuildBan(Discord.guildID, userID)
+	guildBan, err := d.session.GuildBan(d.guildID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve ban information for user with userID: %s", userID)
 	}
 
-	Discord.logger.WithFields(log.Fields{
+	d.logger.WithFields(log.Fields{
 		"user":     guildBan.User.String(),
 		"reason":   reason,
 		"dateTime": time.Now().String(),
@@ -84,15 +84,15 @@ func (Discord *DiscordImpl) BanUser(userID string, reason string, days int) erro
 	return nil
 }
 
-func (Discord *DiscordImpl) SendChannelMessage(channelID string, content string) error {
+func (d *DiscordImpl) SendChannelMessage(channelID string, content string) error {
 	if channelID == "" {
-		channelID = Discord.primaryChannelID
+		channelID = d.primaryChannelID
 	}
-	message, err := Discord.session.ChannelMessageSend(channelID, content)
+	message, err := d.session.ChannelMessageSend(channelID, content)
 	if err != nil {
 		return fmt.Errorf("failed to send message to channel")
 	}
-	Discord.logger.WithFields(log.Fields{
+	d.logger.WithFields(log.Fields{
 		"author":    message.Author,
 		"channelID": message.ChannelID,
 		"guildID":   message.GuildID,
@@ -103,16 +103,16 @@ func (Discord *DiscordImpl) SendChannelMessage(channelID string, content string)
 	return nil
 }
 
-func (Discord *DiscordImpl) SendDM(userID string, message string) error {
-	err := Discord.SendChannelMessage(userID, message)
+func (d *DiscordImpl) SendDM(userID string, message string) error {
+	err := d.SendChannelMessage(userID, message)
 	if err != nil {
 		return fmt.Errorf("failed to send direct message to user with ID: %s", userID)
 	}
 	return nil
 }
 
-func (Discord *DiscordImpl) SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID string) error {
-	channel, err := Discord.session.UserChannelCreate(userID)
+func (d *DiscordImpl) SendDMEmbed(userID, content, description, titleText, buttonLabel, buttonID string) error {
+	channel, err := d.session.UserChannelCreate(userID)
 	if err != nil {
 		return fmt.Errorf("failed to create private message channel with userID: %s", userID)
 	}
@@ -136,25 +136,25 @@ func (Discord *DiscordImpl) SendDMEmbed(userID, content, description, titleText,
 			},
 		},
 	}
-	_, err = Discord.session.ChannelMessageSendComplex(channel.ID, message)
+	_, err = d.session.ChannelMessageSendComplex(channel.ID, message)
 	if err != nil {
 		return fmt.Errorf("failed to send private message with embed to user with ID: %s: %w", userID, err)
 	}
-	Discord.logger.WithFields(log.Fields{
+	d.logger.WithFields(log.Fields{
 		"channelID": userID,
 	}).Info("Sent DM")
 	return nil
 }
 
-func (Discord *DiscordImpl) GetAllGuildMembers() ([]UserRoles, error) {
+func (d *DiscordImpl) GetAllGuildMembers() ([]UserRoles, error) {
 	temp := make([]*discordgo.Member, 0)
 	userRoles := make([]UserRoles, 0)
 	latestMember := ""
 	for {
 		// Make a call to GuildMembers
-		gm, err := Discord.session.GuildMembers(Discord.guildID, latestMember, 1000)
+		gm, err := d.session.GuildMembers(d.guildID, latestMember, 1000)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get guild members from guild with ID: %s", Discord.guildID)
+			return nil, fmt.Errorf("failed to get guild members from guild with ID: %s", d.guildID)
 		}
 		// Append the result of the call to GuildMembers to out
 		temp = append(temp, gm...)
@@ -171,13 +171,13 @@ func (Discord *DiscordImpl) GetAllGuildMembers() ([]UserRoles, error) {
 
 }
 
-func (Discord *DiscordImpl) GetGuildMemberUsername(userID string) (string, error) {
+func (d *DiscordImpl) GetGuildMemberUsername(userID string) (string, error) {
 	if userID == "" {
 		return "", fmt.Errorf("userID cannot be empty: %s", userID)
 	}
-	member, err := Discord.session.GuildMember(Discord.guildID, userID)
+	member, err := d.session.GuildMember(d.guildID, userID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get member username with ID: %s in guild with ID: %s", userID, Discord.guildID)
+		return "", fmt.Errorf("failed to get member username with ID: %s in guild with ID: %s", userID, d.guildID)
 	}
 	return fmt.Sprintf("%s#%s", member.User.Username, member.User.Discriminator), nil
 }
@@ -231,6 +231,8 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare session to Discord")
 	}
+
+	session.StateEnabled = true
 	// Create a DiscordImpl with args
 	discordImpl := &DiscordImpl{
 		allowedToVote:         args.AllowedToVote,
@@ -286,12 +288,45 @@ func NewDiscord(args *DiscordImplArgs) (*DiscordImpl, error) {
 
 	return discordImpl, nil
 }
-func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordgo.InteractionCreate) {
+
+func (d *DiscordImpl) handleMemberUpdate(s *discordgo.Session, i *discordgo.GuildMemberUpdate) {
+	cachedUser, err := s.State.Member(i.GuildID, i.User.ID)
+	if err != nil {
+		return
+	}
+	if cachedUser == nil {
+		return
+	}
+	newRoles := i.Roles
+	oldRoles := cachedUser.Roles
+
+	newRoleMap := make(map[string]struct{})
+	for _, role := range newRoles {
+		newRoleMap[role] = struct{}{}
+	}
+
+	removed := make([]string, 0)
+	for _, role := range oldRoles {
+		//if role is in old roles, but not in new role map, that role was removed.
+		//log that and append it to the user
+		if _, ok := newRoleMap[role]; !ok {
+			removed = append(removed, role)
+		}
+	}
+
+	//call the callback for each removed role.
+	for _, role := range removed {
+		d.roleRemovedCallback(cachedUser.User.ID, role)
+	}
+
+}
+
+func (d *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Step 1: Figure out which one of the three interactions just happened.
 	switch i.Interaction.Type {
 	case discordgo.InteractionApplicationCommand:
 		if i.ApplicationCommandData().Name == "panicalert" {
-			if !hasCommandPermissions(Discord.allowedToVote.PanicAlert.Users, i.Member.User.ID, Discord.allowedToVote.PanicAlert.Roles, i.Member.Roles) {
+			if !hasCommandPermissions(d.allowedToVote.PanicAlert.Users, i.Member.User.ID, d.allowedToVote.PanicAlert.Roles, i.Member.Roles) {
 				handlePermissionsBadRequest(s, i)
 			} else {
 				err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -304,15 +339,15 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 					},
 				})
 				if err != nil {
-					Discord.logger.Errorf("failed to respond to application command: %w", err)
+					d.logger.Errorf("failed to respond to application command: %w", err)
 					return
 				}
-				Discord.panicAlertCallback(i.ApplicationCommandData().Options[0].Value.(string))
+				d.panicAlertCallback(i.ApplicationCommandData().Options[0].Value.(string))
 			}
 		}
 		if i.ApplicationCommandData().Name == "panicban" {
 			slashCommandData := i.ApplicationCommandData()
-			if !hasCommandPermissions(Discord.allowedToVote.PanicBan.Users, i.Member.User.ID, Discord.allowedToVote.PanicBan.Roles, i.Member.Roles) {
+			if !hasCommandPermissions(d.allowedToVote.PanicBan.Users, i.Member.User.ID, d.allowedToVote.PanicBan.Roles, i.Member.Roles) {
 				handlePermissionsBadRequest(s, i)
 			} else {
 				err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -322,13 +357,13 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 					},
 				})
 				if err != nil {
-					Discord.logger.Errorf("failed to respond to application command: %w", err)
+					d.logger.Errorf("failed to respond to application command: %w", err)
 					return
 				}
 				time.AfterFunc(time.Second*1, func() {
 					s.InteractionResponseDelete(i.Interaction)
 				})
-				Discord.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string), slashCommandData.Options[2].Value.(float64))
+				d.panicBanCallback(i.Interaction.Member.User.ID, slashCommandData.Options[0].Value.(string), slashCommandData.Options[1].Value.(string), slashCommandData.Options[2].Value.(float64))
 			}
 		}
 	// This makes the assumption that an InteractionMessageComponent event is fired whenever an embedded button is clicked on.
@@ -336,14 +371,14 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 	case discordgo.InteractionMessageComponent:
 		dat, ok := i.Interaction.Data.(discordgo.MessageComponentInteractionData)
 		if !ok {
-			Discord.logger.Errorf("Interaction Data of unexpected type, %T", i.Interaction.Data)
+			d.logger.Errorf("Interaction Data of unexpected type, %T", i.Interaction.Data)
 			break
 		}
 		if i.Interaction.User == nil {
-			Discord.logger.Errorf("Unable to get user from interaction")
+			d.logger.Errorf("Unable to get user from interaction")
 			break
 		}
-		Discord.embedReactionCallback(i.Interaction.User.ID, dat.CustomID)
+		d.embedReactionCallback(i.Interaction.User.ID, dat.CustomID)
 	}
 	// Step 2: Pull the data from the interaction that we care about(going to depend on which interaction)
 	// Step 3: Pass that information to the matching callback.
@@ -351,8 +386,8 @@ func (Discord *DiscordImpl) handleInteractions(s *discordgo.Session, i *discordg
 	pp.Println(i)
 }
 
-func (Discord *DiscordImpl) registerSlashCommands() error {
-	Discord.logger.Infof("registering slash commands")
+func (d *DiscordImpl) registerSlashCommands() error {
+	d.logger.Infof("registering slash commands")
 	var def bool = false
 	// Create an array of pointers to discordgo.ApplicationCommand structs
 	commands := []*discordgo.ApplicationCommand{
@@ -397,9 +432,10 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 	}
 
 	// Add a listener for when the Discord API fires an InteractionCreate event.
-	Discord.session.AddHandler(Discord.handleInteractions)
+	d.session.AddHandler(d.handleInteractions)
+	d.session.AddHandler(d.handleMemberUpdate)
 	for _, v := range commands {
-		_, err := Discord.session.ApplicationCommandCreate(Discord.session.State.User.ID, Discord.guildID, v)
+		_, err := d.session.ApplicationCommandCreate(d.session.State.User.ID, d.guildID, v)
 		if err != nil {
 			return fmt.Errorf("cannot create '%v' command: %v", v.Name, err)
 		}
@@ -407,22 +443,22 @@ func (Discord *DiscordImpl) registerSlashCommands() error {
 	return nil
 }
 
-func (Discord *DiscordImpl) findPrimaryChannelInGuild() (string, error) {
+func (d *DiscordImpl) findPrimaryChannelInGuild() (string, error) {
 	// The primary channel may be provided to us in the config.yml
-	if Discord.primaryChannelID != "" {
-		channel, err := Discord.session.Channel(Discord.primaryChannelID)
+	if d.primaryChannelID != "" {
+		channel, err := d.session.Channel(d.primaryChannelID)
 		if err != nil {
 			return "", fmt.Errorf("failed to find channel with provided identifier. Is primaryChannelID a valid Discord channelID?: %w", err)
 		}
 		return channel.ID, nil
 	}
 
-	guild, err := Discord.session.Guild(Discord.guildID)
+	guild, err := d.session.Guild(d.guildID)
 	if err != nil {
 		return "", fmt.Errorf("failed to find guild with provided identifier. Did you forget to put the GuildID in the config?: %w", err)
 	}
 
-	channels, err := Discord.session.GuildChannels(Discord.guildID)
+	channels, err := d.session.GuildChannels(d.guildID)
 	if err != nil {
 		return "", fmt.Errorf("failed to find channels in the guild: %w", err)
 	}

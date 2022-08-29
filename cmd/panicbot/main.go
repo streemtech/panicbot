@@ -205,6 +205,7 @@ func (c *Container) RoleRemovedCallback(user string, role string) {
 	if !hasVotePermissions("", []string{role}, []string{}, c.Config.Voting.AllowedToVote.PanicBan.Roles) {
 		return
 	}
+	c.Logger.Infof("adding user %s to trace period for role %s", user, role)
 	t := time.Now()
 	c.GracePeriod[user] = t
 	time.AfterFunc(time.Minute*30, func() {
@@ -293,8 +294,10 @@ func hasVotePermissions(userID string, userRoles []string, allowedUserIDs []stri
 }
 
 func main() {
-	c := new(Container)
-	c.VoteTracker = make(map[string]VoteData)
+	c := &Container{
+		VoteTracker: make(map[string]VoteData),
+		GracePeriod: make(map[string]time.Time),
+	}
 	c.configureLogger()
 	err := c.configChanged(true)
 	if err != nil {
